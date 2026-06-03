@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard da Calculadora</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f4f4f7;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      margin: 0;
+      padding: 2rem 1rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      padding: 2rem;
+      max-width: 520px;
+      width: 100%;
+    }
+    h1 {
+      margin: 0 0 1.5rem;
+      font-size: 1.4rem;
+      text-align: center;
+      color: #222;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 1rem;
+    }
+    .field label {
+      font-size: 0.85rem;
+      color: #555;
+      margin-bottom: 0.35rem;
+    }
+    .field input {
+      font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      font-size: 1.1rem;
+      padding: 0.6rem 0.8rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      outline: none;
+    }
+    .field input:focus {
+      border-color: #4a7dff;
+    }
+    .buttons {
+      display: flex;
+      gap: 0.75rem;
+      margin: 1.25rem 0;
+    }
+    .buttons button {
+      flex: 1;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      padding: 0.75rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #fff;
+    }
+    #btnAdd { background: #2e8b57; }
+    #btnAdd:hover { background: #246f45; }
+    #btnSub { background: #c0392b; }
+    #btnSub:hover { background: #9b2d22; }
+    #btnMult { background: #2980b9; }
+    #btnMult:hover { background: #1f6391; }
+    #btnFact { background: #8e44ad; }
+    #btnFact:hover { background: #6f3586; }
+    .output {
+      margin-top: 1rem;
+    }
+    .output h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      color: #666;
+      margin: 0.75rem 0 0.35rem;
+      letter-spacing: 0.05em;
+    }
+    .output pre {
+      background: #1e1e1e;
+      color: #e8e8e8;
+      font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      font-size: 0.9rem;
+      padding: 0.8rem;
+      border-radius: 6px;
+      margin: 0;
+      min-height: 1.5em;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Dashboard da Calculadora</h1>
+
+    <div class="field">
+      <label for="a">Operando A</label>
+      <input id="a" type="text" placeholder="0110">
+    </div>
+
+    <div class="field">
+      <label for="b">Operando B</label>
+      <input id="b" type="text" placeholder="0010">
+    </div>
+
+    <div class="buttons">
+      <button id="btnAdd">SOMA</button>
+      <button id="btnSub">SUB</button>
+      <button id="btnMult">MULT</button>
+      <button id="btnFact">FACT</button>
+    </div>
+
+    <div class="output">
+      <h2>URL enviada</h2>
+      <pre id="urlOut"></pre>
+      <h2>Resposta</h2>
+      <pre id="respOut"></pre>
+    </div>
+  </div>
+
+  <script>
+    // Notas:
+    // - CORS: o firmware ESP32 precisa enviar "Access-Control-Allow-Origin: *"
+    //   no endpoint /calc, senão o browser bloqueia a leitura da resposta.
+    // - Mixed content: abrir esta pagina via file:// e fazer fetch para http://
+    //   funciona em browsers modernos. Servir via https:// quebraria o fetch http.
+    // - Cache: se respostas vierem cacheadas, dar Ctrl+F5 ou adicionar
+    //   "&_=" + Date.now() na URL.
+    const ESP_BASE = 'http://192.168.4.1/calc';
+
+    async function send(op) {
+      const a = document.getElementById('a').value;
+      const b = document.getElementById('b').value;
+      const url = `${ESP_BASE}?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&op=${op}`;
+      document.getElementById('urlOut').textContent = url;
+      document.getElementById('respOut').textContent = 'Aguardando...';
+      try {
+        const r = await fetch(url);
+        const text = await r.text();
+        document.getElementById('respOut').textContent = `HTTP ${r.status}\n${text}`;
+      } catch (e) {
+        document.getElementById('respOut').textContent = `Erro: ${e.message}`;
+      }
+    }
+
+    document.getElementById('btnAdd').addEventListener('click', () => send('add'));
+    document.getElementById('btnSub').addEventListener('click', () => send('sub'));
+    document.getElementById('btnMult').addEventListener('click', () => send('mult'));
+    document.getElementById('btnFact').addEventListener('click', () => send('fact'));
+  </script>
+</body>
+</html>

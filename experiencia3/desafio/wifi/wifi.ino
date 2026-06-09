@@ -160,7 +160,10 @@ void setup() {
         switch (opCode) {
           case 0: r = signedA + signedB; break;
           case 1: r = signedA - signedB; break;
-          case 2: r = signedA * signedB; break;
+          case 2: { // mult
+            r = 0;
+            for (long long i = 1; i <= signedB; i++) r += signedA;
+          } break;
           case 4: r = signedA / signedB; break; // div (B != 0 garantido acima)
           default: { // fact
             r = 1;

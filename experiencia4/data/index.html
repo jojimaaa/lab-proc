@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ESP32 Control Dashboard - LED</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #f4f4f7;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        margin: 0;
+        padding: 2rem 1rem;
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        padding: 2rem;
+        max-width: 520px;
+        width: 100%;
+      }
+      h1 {
+        margin: 0 0 1.5rem;
+        font-size: 1.4rem;
+        text-align: center;
+        color: #222;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1.5rem;
+      }
+      .field .row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+        color: #555;
+        margin-bottom: 0.5rem;
+      }
+      .field .row .val {
+        font-weight: 700;
+        color: #222;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      }
+      /* Slider dimensionado para toque em mobile (RNF2 - usabilidade) */
+      input[type="range"] {
+        width: 100%;
+        height: 2rem;
+        cursor: pointer;
+      }
+      .output h2 {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        color: #666;
+        margin: 0.75rem 0 0.35rem;
+        letter-spacing: 0.05em;
+      }
+      .output pre {
+        background: #1e1e1e;
+        color: #e8e8e8;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 0.9rem;
+        padding: 0.8rem;
+        border-radius: 6px;
+        margin: 0;
+        min-height: 1.5em;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>ESP32 Control Dashboard</h1>
+
+      <div class="field">
+        <div class="row">
+          <label for="led">Intensidade do LED</label>
+          <span class="val"><span id="ledVal">0</span>%</span>
+        </div>
+        <input id="led" type="range" min="0" max="100" value="0" />
+      </div>
+
+      <div class="output">
+        <h2>URL enviada</h2>
+        <pre id="urlOut"></pre>
+        <h2>Resposta</h2>
+        <pre id="respOut"></pre>
+      </div>
+    </div>
+
+    <script>
+      // O ESP32 atua como servidor local (Access Point). O IP padrao do
+      // softAP e 192.168.4.1. Cada movimento do slider dispara um GET que
+      // reflete instantaneamente no brilho fisico do LED.
+      const ESP_BASE = "http://192.168.4.1";
+
+      // Debounce: o slider dispara muitos eventos por segundo. Sem isso,
+      // inundariamos o servidor com requisicoes a cada pixel de movimento.
+      let timer = null;
+      function agendarEnvio(pct) {
+        clearTimeout(timer);
+        timer = setTimeout(() => enviarLED(pct), 60);
+      }
+
+      async function enviarLED(pct) {
+        const url = `${ESP_BASE}/led?val=${pct}`;
+        document.getElementById("urlOut").textContent = url;
+        try {
+          const r = await fetch(url);
+          const text = await r.text();
+          document.getElementById("respOut").textContent =
+            `HTTP ${r.status}\n${text}`;
+        } catch (e) {
+          document.getElementById("respOut").textContent = `Erro: ${e.message}`;
+        }
+      }
+
+      const ledSlider = document.getElementById("led");
+      const ledVal = document.getElementById("ledVal");
+      ledSlider.addEventListener("input", () => {
+        ledVal.textContent = ledSlider.value;
+        agendarEnvio(ledSlider.value);
+      });
+    </script>
+  </body>
+</html>

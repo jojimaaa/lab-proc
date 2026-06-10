@@ -41,11 +41,13 @@ void aplicarFreqLED(int hz) {
 void setup() {
   Serial.begin(115200);
 
+  ESP32PWM::allocateTimer(0);
+  meuServo.setPeriodHertz(50);
+  meuServo.attach(PIN_SERVO, 500, 2400);
+  meuServo.write(0);
+
   ledcAttach(PIN_LED, freqLED, LEDC_RES_LED);
   aplicarBrilhoLED(0);
-
-  meuServo.attach(PIN_SERVO);
-  meuServo.write(0);
 
   if (!LittleFS.begin()) {
     Serial.println("Erro ao montar LittleFS");

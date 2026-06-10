@@ -6,16 +6,16 @@
 const char* ssid = "ESP32-PWM";
 const char* password = "matusita_test";
 
-// --- Mapeamento de pinos (GPIOs da ESP32-C3) ---
 const int PIN_LED = 7;
 
-// LED brilha sem cintilacao perceptivel em alta frequencia. Usamos 5 kHz
-// com 8 bits de resolucao (duty de 0 a 255), faixa classica de PWM de LED.
-// (Core ESP32 3.x: a API LEDC nova trabalha por PINO; o canal e gerenciado
-//  internamente pelo core.)
-const int LEDC_FREQ_LED = 5000;  // 5 kHz -> sem flicker visivel
-const int LEDC_RES_LED  = 8;     // 8 bits -> duty 0..255
-const int DUTY_MAX_LED  = 255;   // (1 << LEDC_RES_LED) - 1
+const int LEDC_RES_LED = 13;
+const int DUTY_MAX_LED = 8191;  
+
+const int FREQ_LED_MIN = 1;
+const int FREQ_LED_MAX = 4000;
+
+int freqLED   = 4000;
+int brilhoLED = 0;
 
 AsyncWebServer server(80);
 
@@ -28,14 +28,20 @@ int percentToDuty(int pct) {
 }
 
 void aplicarBrilhoLED(int pct) {
+  brilhoLED = pct;
   ledcWrite(PIN_LED, percentToDuty(pct));
+}
+
+void aplicarFreqLED(int hz) {
+  freqLED = hz;
+  ledcChangeFrequency(PIN_LED, hz, LEDC_RES_LED);
+  ledcWrite(PIN_LED, percentToDuty(brilhoLED));
 }
 
 void setup() {
   Serial.begin(115200);
 
-  // API LEDC 3.x: configura frequencia/resolucao e liga o pino de uma vez.
-  ledcAttach(PIN_LED, LEDC_FREQ_LED, LEDC_RES_LED);
+  ledcAttach(PIN_LED, freqLED, LEDC_RES_LED);
   aplicarBrilhoLED(0);
 
   if (!LittleFS.begin()) {
@@ -50,6 +56,7 @@ void setup() {
     request->send(LittleFS, "/index.html", "text/html");
   });
 
+  // Brilho do LED. GET /led?val=<0..100>
   server.on("/led", HTTP_GET, [](AsyncWebServerRequest *request){
     if (!request->hasParam("val")) {
       request->send(400, "text/plain", "Falta parametro 'val'");
@@ -64,10 +71,30 @@ void setup() {
 
     aplicarBrilhoLED(pct);
 
-    int duty = percentToDuty(pct);
     String body = "LED=" + String(pct) + "%\n";
-    body += "DUTY=" + String(duty) + "/" + String(DUTY_MAX_LED) + "\n";
-    body += "FREQ_Hz=" + String(LEDC_FREQ_LED);
+    body += "DUTY=" + String(percentToDuty(pct)) + "/" + String(DUTY_MAX_LED) + "\n";
+    body += "FREQ_Hz=" + String(freqLED);
+    request->send(200, "text/plain", body);
+  });
+
+  server.on("/freq", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (!request->hasParam("val")) {
+      request->send(400, "text/plain", "Falta parametro 'val'");
+      return;
+    }
+
+    int hz = request->getParam("val")->value().toInt();
+    if (hz < FREQ_LED_MIN || hz > FREQ_LED_MAX) {
+      request->send(400, "text/plain",
+                    "freq invalida (use " + String(FREQ_LED_MIN) +
+                    ".." + String(FREQ_LED_MAX) + " Hz)");
+      return;
+    }
+
+    aplicarFreqLED(hz);
+
+    String body = "FREQ_Hz=" + String(freqLED) + "\n";
+    body += "LED=" + String(brilhoLED) + "%";
     request->send(200, "text/plain", body);
   });
 

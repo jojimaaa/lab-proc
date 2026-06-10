@@ -49,11 +49,53 @@
         color: #222;
         font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
       }
-      /* Slider dimensionado para toque em mobile (RNF2 - usabilidade) */
       input[type="range"] {
         width: 100%;
         height: 2rem;
         cursor: pointer;
+      }
+      .freqGroup {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .freqGroup input[type="number"] {
+        flex: 1;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 1rem;
+        padding: 0.5rem 0.6rem;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        outline: none;
+      }
+      .freqGroup button {
+        padding: 0.5rem 0.9rem;
+        border: none;
+        border-radius: 6px;
+        background: #2980b9;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .freqGroup button:hover {
+        background: #1f6391;
+      }
+      .presets {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+      }
+      .presets button {
+        flex: 1;
+        padding: 0.4rem;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        background: #f4f4f7;
+        color: #333;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+      .presets button:hover {
+        background: #e8e8ee;
       }
       .output h2 {
         font-size: 0.85rem;
@@ -88,6 +130,23 @@
         <input id="led" type="range" min="0" max="100" value="0" />
       </div>
 
+      <div class="field">
+        <div class="row">
+          <label for="freq">Frequencia do PWM (Hz)</label>
+          <span class="val"><span id="freqAtual">4000</span> Hz</span>
+        </div>
+        <div class="freqGroup">
+          <input id="freq" type="number" min="1" max="4000" value="4000" />
+          <button id="btnFreq">Aplicar</button>
+        </div>
+        <div class="presets">
+          <button data-hz="30">30 Hz (pisca)</button>
+          <button data-hz="120">120 Hz</button>
+          <button data-hz="1000">1 kHz</button>
+          <button data-hz="4000">4 kHz</button>
+        </div>
+      </div>
+
       <div class="output">
         <h2>URL enviada</h2>
         <pre id="urlOut"></pre>
@@ -97,13 +156,8 @@
     </div>
 
     <script>
-      // O ESP32 atua como servidor local (Access Point). O IP padrao do
-      // softAP e 192.168.4.1. Cada movimento do slider dispara um GET que
-      // reflete instantaneamente no brilho fisico do LED.
       const ESP_BASE = "http://192.168.4.1";
 
-      // Debounce: o slider dispara muitos eventos por segundo. Sem isso,
-      // inundariamos o servidor com requisicoes a cada pixel de movimento.
       let timer = null;
       function agendarEnvio(pct) {
         clearTimeout(timer);
@@ -128,6 +182,41 @@
       ledSlider.addEventListener("input", () => {
         ledVal.textContent = ledSlider.value;
         agendarEnvio(ledSlider.value);
+      });
+
+      const freqInput = document.getElementById("freq");
+      const freqAtual = document.getElementById("freqAtual");
+
+      async function enviarFreq(hz) {
+        const url = `${ESP_BASE}/freq?val=${hz}`;
+        document.getElementById("urlOut").textContent = url;
+        try {
+          const r = await fetch(url);
+          const text = await r.text();
+          document.getElementById("respOut").textContent =
+            `HTTP ${r.status}\n${text}`;
+          if (r.ok) freqAtual.textContent = hz;
+        } catch (e) {
+          document.getElementById("respOut").textContent = `Erro: ${e.message}`;
+        }
+      }
+
+      document.getElementById("btnFreq").addEventListener("click", () => {
+        const hz = parseInt(freqInput.value, 10);
+        if (!Number.isInteger(hz) || hz < 1 || hz > 4000) {
+          document.getElementById("respOut").textContent =
+            "Erro: frequencia deve estar entre 1 e 4000 Hz.";
+          return;
+        }
+        enviarFreq(hz);
+      });
+
+      document.querySelectorAll(".presets button").forEach((b) => {
+        b.addEventListener("click", () => {
+          const hz = b.dataset.hz;
+          freqInput.value = hz;
+          enviarFreq(hz);
+        });
       });
     </script>
   </body>

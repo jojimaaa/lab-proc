@@ -3,7 +3,7 @@
 #include <LittleFS.h>
 
 // --- Wi-Fi Access Point ---
-const char* ssid = "ESP32-PWM";
+const char* ssid = "ESP32-PWM-jojima";
 const char* password = "matusita_test";
 
 const int PIN_LED = 7;

@@ -8,13 +8,14 @@ const char* password = "matusita_test";
 const int PIN_LED   = 7;  
 const int PIN_SERVO = 6;
 
-const int LEDC_CH_LED   = 0;
-const int LEDC_FREQ_LED = 5000; 
-const int LEDC_RES_LED  = 8; 
+// Core ESP32 3.x: a API LEDC nova trabalha por PINO; o canal e gerenciado
+// internamente pelo core. Cada pino mantem seu proprio sinal PWM em
+// hardware, simultaneamente (LED em alta freq, servo em 50 Hz).
+const int LEDC_FREQ_LED = 5000;
+const int LEDC_RES_LED  = 8;
 const int DUTY_MAX_LED  = 255;
 
-const int LEDC_CH_SERVO   = 1;
-const int LEDC_FREQ_SERVO = 50;    
+const int LEDC_FREQ_SERVO = 50;
 const int LEDC_RES_SERVO  = 16;    
 const int SERVO_PERIODO_us = 20000;       
 const int SERVO_MIN_us     = 1000;        
@@ -30,7 +31,7 @@ int percentToDuty(int pct) {
 }
 
 void aplicarBrilhoLED(int pct) {
-  ledcWrite(LEDC_CH_LED, percentToDuty(pct));
+  ledcWrite(PIN_LED, percentToDuty(pct));
 }
 
 long anguloParaDuty(int ang) {
@@ -42,19 +43,18 @@ long anguloParaDuty(int ang) {
 }
 
 void aplicarAnguloServo(int ang) {
-  ledcWrite(LEDC_CH_SERVO, anguloParaDuty(ang));
+  ledcWrite(PIN_SERVO, anguloParaDuty(ang));
 }
 
 void setup() {
   Serial.begin(115200);
 
-  ledcSetup(LEDC_CH_LED, LEDC_FREQ_LED, LEDC_RES_LED);
-  ledcAttachPin(PIN_LED, LEDC_CH_LED);
-  aplicarBrilhoLED(0); 
+  // API LEDC 3.x: configura frequencia/resolucao e liga o pino de uma vez.
+  ledcAttach(PIN_LED, LEDC_FREQ_LED, LEDC_RES_LED);
+  aplicarBrilhoLED(0);
 
-  ledcSetup(LEDC_CH_SERVO, LEDC_FREQ_SERVO, LEDC_RES_SERVO);
-  ledcAttachPin(PIN_SERVO, LEDC_CH_SERVO);
-  aplicarAnguloServo(0);  
+  ledcAttach(PIN_SERVO, LEDC_FREQ_SERVO, LEDC_RES_SERVO);
+  aplicarAnguloServo(0);
 
   if (!LittleFS.begin()) {
     Serial.println("Erro ao montar LittleFS");

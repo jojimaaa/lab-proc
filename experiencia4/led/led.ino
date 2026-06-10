@@ -11,7 +11,8 @@ const int PIN_LED = 7;
 
 // LED brilha sem cintilacao perceptivel em alta frequencia. Usamos 5 kHz
 // com 8 bits de resolucao (duty de 0 a 255), faixa classica de PWM de LED.
-const int LEDC_CH_LED   = 0;     // canal LEDC dedicado ao LED
+// (Core ESP32 3.x: a API LEDC nova trabalha por PINO; o canal e gerenciado
+//  internamente pelo core.)
 const int LEDC_FREQ_LED = 5000;  // 5 kHz -> sem flicker visivel
 const int LEDC_RES_LED  = 8;     // 8 bits -> duty 0..255
 const int DUTY_MAX_LED  = 255;   // (1 << LEDC_RES_LED) - 1
@@ -27,14 +28,14 @@ int percentToDuty(int pct) {
 }
 
 void aplicarBrilhoLED(int pct) {
-  ledcWrite(LEDC_CH_LED, percentToDuty(pct));
+  ledcWrite(PIN_LED, percentToDuty(pct));
 }
 
 void setup() {
   Serial.begin(115200);
 
-  ledcSetup(LEDC_CH_LED, LEDC_FREQ_LED, LEDC_RES_LED);
-  ledcAttachPin(PIN_LED, LEDC_CH_LED);
+  // API LEDC 3.x: configura frequencia/resolucao e liga o pino de uma vez.
+  ledcAttach(PIN_LED, LEDC_FREQ_LED, LEDC_RES_LED);
   aplicarBrilhoLED(0);
 
   if (!LittleFS.begin()) {

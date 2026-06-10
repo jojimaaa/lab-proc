@@ -25,9 +25,10 @@ const char* password = "matusita_test";
 // --- Mapeamento de pinos (GPIOs da ESP32-C3) ---
 const int PIN_SERVO = 6;  // saida do sinal de controle do servo (3.3V logico)
 
-// --- Configuracao do canal LEDC para o servo ---
+// --- Configuracao do PWM (LEDC) para o servo ---
 // 16 bits de resolucao para ter passos finos de duty dentro do periodo.
-const int LEDC_CH_SERVO    = 1;       // canal LEDC dedicado ao servo
+// (Core ESP32 3.x: a API LEDC nova trabalha por PINO; o canal e gerenciado
+//  internamente pelo core.)
 const int LEDC_FREQ_SERVO  = 50;      // 50 Hz -> periodo de 20 ms
 const int LEDC_RES_SERVO   = 16;      // 16 bits -> duty 0..65535
 const int SERVO_PERIODO_us = 20000;   // 1/50 Hz = 20000 us
@@ -52,15 +53,14 @@ long anguloParaDuty(int ang) {
 
 // Aplica a posicao (0..180 graus) no servo via hardware LEDC.
 void aplicarAnguloServo(int ang) {
-  ledcWrite(LEDC_CH_SERVO, anguloParaDuty(ang));
+  ledcWrite(PIN_SERVO, anguloParaDuty(ang));
 }
 
 void setup() {
   Serial.begin(115200);
 
-  // --- Configura o canal PWM de hardware (LEDC) para o servo ---
-  ledcSetup(LEDC_CH_SERVO, LEDC_FREQ_SERVO, LEDC_RES_SERVO);
-  ledcAttachPin(PIN_SERVO, LEDC_CH_SERVO);
+  // API LEDC 3.x: configura frequencia/resolucao e liga o pino de uma vez.
+  ledcAttach(PIN_SERVO, LEDC_FREQ_SERVO, LEDC_RES_SERVO);
   aplicarAnguloServo(0);  // comeca em 0 graus
 
   // Inicializa LittleFS

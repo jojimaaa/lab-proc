@@ -2,7 +2,6 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 
-// --- Wi-Fi Access Point ---
 const char* ssid = "ESP32-PWM";
 const char* password = "matusita_test";
 
@@ -18,8 +17,6 @@ int freqLED   = 4000;
 int brilhoLED = 0;
 
 AsyncWebServer server(80);
-
-// --- Funcoes auxiliares ---
 
 int percentToDuty(int pct) {
   if (pct < 0)   pct = 0;
@@ -56,7 +53,6 @@ void setup() {
     request->send(LittleFS, "/index.html", "text/html");
   });
 
-  // Brilho do LED. GET /led?val=<0..100>
   server.on("/led", HTTP_GET, [](AsyncWebServerRequest *request){
     if (!request->hasParam("val")) {
       request->send(400, "text/plain", "Falta parametro 'val'");

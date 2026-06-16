@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ESP32 - Monitoramento Inteligente</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #f4f4f7;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        margin: 0;
+        padding: 2rem 1rem;
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        padding: 2rem;
+        max-width: 520px;
+        width: 100%;
+      }
+      h1 {
+        margin: 0 0 1.5rem;
+        font-size: 1.4rem;
+        text-align: center;
+        color: #222;
+      }
+      .gauge {
+        text-align: center;
+        margin-bottom: 1.5rem;
+      }
+      .gauge .valor {
+        font-size: 3rem;
+        font-weight: 800;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        color: #222;
+        line-height: 1;
+      }
+      .gauge .max {
+        font-size: 1rem;
+        color: #888;
+      }
+      .gauge .legenda {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 0.4rem;
+      }
+      .bar {
+        width: 100%;
+        height: 0.9rem;
+        background: #e8e8ee;
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 0.8rem;
+      }
+      .bar .fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #1e1e1e, #f1c40f);
+        transition: width 0.25s ease;
+      }
+      .estado {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        justify-content: center;
+        margin: 1.25rem 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+      }
+      .dot {
+        width: 1rem;
+        height: 1rem;
+        border-radius: 50%;
+        background: #ccc;
+        box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.05);
+      }
+      .dot.normal {
+        background: #2ecc71;
+      }
+      .dot.noturno {
+        background: #f1c40f;
+        animation: pisca 1s steps(1) infinite;
+      }
+      .dot.emergencia {
+        background: #e74c3c;
+      }
+      @keyframes pisca {
+        50% {
+          opacity: 0.2;
+        }
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        margin-top: 1.5rem;
+      }
+      .field .row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9rem;
+        color: #555;
+        margin-bottom: 0.5rem;
+      }
+      .field .row .val {
+        font-weight: 700;
+        color: #222;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      }
+      input[type="range"] {
+        width: 100%;
+        height: 2rem;
+        cursor: pointer;
+        accent-color: #2980b9;
+      }
+      .output h2 {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        color: #666;
+        margin: 1.25rem 0 0.35rem;
+        letter-spacing: 0.05em;
+      }
+      .output pre {
+        background: #1e1e1e;
+        color: #e8e8e8;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 0.9rem;
+        padding: 0.8rem;
+        border-radius: 6px;
+        margin: 0;
+        min-height: 1.5em;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Monitoramento Inteligente</h1>
+
+      <div class="gauge">
+        <div>
+          <span class="valor" id="ldrVal">0</span>
+          <span class="max">/ <span id="adcMax">4095</span></span>
+        </div>
+        <div class="legenda">Leitura do sensor LDR (ADC 12 bits)</div>
+        <div class="bar"><div class="fill" id="barFill"></div></div>
+      </div>
+
+      <div class="estado">
+        <span class="dot" id="estadoDot"></span>
+        <span id="estadoTxt">--</span>
+      </div>
+
+      <div class="field">
+        <div class="row">
+          <label for="limiar">Limiar do modo noturno</label>
+          <span class="val"><span id="limiarVal">1500</span></span>
+        </div>
+        <input id="limiar" type="range" min="0" max="4095" value="1500" />
+      </div>
+
+      <div class="output">
+        <h2>Ultima resposta (/ldr)</h2>
+        <pre id="respOut"></pre>
+      </div>
+    </div>
+
+    <script>
+      const ESP_BASE = "http://192.168.4.1";
+
+      const ldrVal = document.getElementById("ldrVal");
+      const adcMax = document.getElementById("adcMax");
+      const barFill = document.getElementById("barFill");
+      const estadoDot = document.getElementById("estadoDot");
+      const estadoTxt = document.getElementById("estadoTxt");
+      const respOut = document.getElementById("respOut");
+
+      // --- Polling da telemetria do LDR (>= 1 Hz). Aqui usamos 2 Hz. ---
+      async function atualizar() {
+        try {
+          const r = await fetch(`${ESP_BASE}/ldr`);
+          const data = await r.json();
+
+          ldrVal.textContent = data.ldr;
+          adcMax.textContent = data.adcMax;
+          barFill.style.width = (100 * data.ldr) / data.adcMax + "%";
+
+          estadoTxt.textContent = data.estado;
+          estadoDot.className = "dot " + data.estado.toLowerCase();
+
+          respOut.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          respOut.textContent = `Erro: ${e.message}`;
+        }
+      }
+      setInterval(atualizar, 500);
+      atualizar();
+
+      // --- Ajuste do limiar (com debounce simples) ---
+      const limiar = document.getElementById("limiar");
+      const limiarValTxt = document.getElementById("limiarVal");
+      let timer = null;
+      limiar.addEventListener("input", () => {
+        limiarValTxt.textContent = limiar.value;
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          try {
+            await fetch(`${ESP_BASE}/limiar?val=${limiar.value}`);
+          } catch (e) {
+            respOut.textContent = `Erro: ${e.message}`;
+          }
+        }, 80);
+      });
+    </script>
+  </body>
+</html>

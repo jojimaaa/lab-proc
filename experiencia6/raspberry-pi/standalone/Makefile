@@ -15,7 +15,7 @@ SRC    = calculadora.c libalu.s
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LIBS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LIBS) -lwiringPi
 
 run: $(TARGET)
 	sudo ./$(TARGET)

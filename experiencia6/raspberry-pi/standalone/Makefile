@@ -1,20 +1,26 @@
-# Makefile - ULA em Assembly como biblioteca compartilhada (Exp 6 - Desafio)
+# Makefile - Calculadora binaria standalone em C (Exp 6 - Desafio)
+# Freenove Projects Board + wiringPi. A ULA vem do Assembly libalu.s.
 #
-#   make        -> compila libalu.so (a partir de libalu.s)
-#   make run    -> compila e roda a calculadora (precisa do hardware ligado)
-#   make clean  -> remove a lib
+#   make          -> compila ./calculadora (C + Assembly, linkando wiringPi)
+#   make run      -> compila e roda (precisa de sudo p/ GPIO)
+#   make clean    -> remove o executavel
 
-CC = gcc
+CC     = gcc
+CFLAGS = -O2 -Wall
+LIBS   = -lwiringPi
 
-all: libalu.so
+TARGET = calculadora
+SRC    = calculadora.c libalu.s
 
-libalu.so: libalu.s
-	$(CC) -shared -fPIC -o libalu.so libalu.s
+all: $(TARGET)
 
-run: libalu.so
-	python3 calculadora.py
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LIBS)
+
+run: $(TARGET)
+	sudo ./$(TARGET)
 
 clean:
-	rm -f libalu.so
+	rm -f $(TARGET)
 
 .PHONY: all run clean

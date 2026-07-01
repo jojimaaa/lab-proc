@@ -25,8 +25,8 @@
 extern int alu_calc(int op, long a, long b, long *out_result, long *out_remainder);
 
 /* ==================== teclado matricial 4x4 ==================== */
-static const int ROWS[4] = {5, 6, 13, 19};     /* BCM, saidas   */
-static const int COLS[4] = {12, 16, 20, 21};   /* BCM, entradas */
+static const int ROWS[4] = {16, 20, 21, 26};   /* BCM, saidas   */
+static const int COLS[4] = {19, 13, 6, 5};     /* BCM, entradas */
 static const char KEYS[4][4] = {
     {'1', '2', '3', 'A'},
     {'4', '5', '6', 'B'},

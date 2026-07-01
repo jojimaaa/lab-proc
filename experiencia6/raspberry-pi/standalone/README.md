@@ -45,8 +45,8 @@ outros pinos, ajuste `ROWS`/`COLS` e `LCD_ADDR` no topo do `calculadora.c`).
 
 | Sinal | GPIO (BCM) | Pino físico |
 |---|---|---|
-| Linha 1–4 | 5, 6, 13, 19 | 29, 31, 33, 35 |
-| Coluna 1–4 | 12, 16, 20, 21 | 32, 36, 38, 40 |
+| Linha 1–4 | 16, 20, 21, 26 | 36, 38, 40, 37 |
+| Coluna 1–4 | 19, 13, 6, 5 | 35, 33, 31, 29 |
 
 Sem resistores externos (usa pull-ups internos). O I2C fica **sempre** em
 GPIO2/GPIO3, independente da placa.

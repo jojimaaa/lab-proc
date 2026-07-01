@@ -83,23 +83,30 @@ sudo ./calculadora # wiringPi/GPIO costuma exigir root  (ou: make run)
 
 ## Problemas comuns (teclado)
 
+O código usa **varredura pull-down (ativo-alto)**: linhas em repouso LOW,
+acionadas em HIGH; colunas com pull-down (repouso = 0), o toque leva a coluna a 1.
+Isso combina com o padrão do chip: **GPIO 13 e 19 já nascem em pull-down**.
+
 Rode o diagnóstico: `gcc test_keypad.c -lwiringPi -o test_keypad && sudo ./test_keypad`
 
-- **"Printa adoidado" sem apertar nada** → as colunas estão flutuando (pull-up
-  interno não ativo ou fio solto). No diagnóstico, alguma coluna lê `0` em
-  repouso. Correções:
-  - Confira a fiação das colunas (GPIO 19,13,6,5) — um fio solto faz isso.
-  - Force os pull-ups pela CLI e teste de novo:
-    `raspi-gpio set 19,13,6,5 ip pu` e depois `raspi-gpio get 19` (deve mostrar `pull=UP`).
-  - Solução persistente: em `/boot/firmware/config.txt` (Bookworm; ou
-    `/boot/config.txt` em versões antigas) adicione `gpio=19,13,6,5=ip,pu` e reinicie.
-  - Verifique o wiringPi: `gpio -v` — em Bookworm use o fork mantido
-    ([WiringPi/WiringPi](https://github.com/WiringPi/WiringPi)); versões antigas
-    podem ignorar `pullUpDnControl`.
-- **Repouso OK, mas apertar não faz nada** → pinos/fiação errados (confira
-  linhas 16,20,21,26 e colunas 19,13,6,5).
+- **"Printa adoidado" sem apertar nada** → alguma coluna está em nível alto no
+  repouso (pull-down não ativo naquele pino). No diagnóstico ela lê `1` em vez
+  de `0`. Atenção: **GPIO 5 e 6 nascem em pull-UP**, então se o `pullUpDnControl`
+  não pegar, essas duas colunas ficam em 1. Correção **definitiva** (nível de
+  firmware, não depende do wiringPi): edite `/boot/firmware/config.txt`
+  (Bookworm; ou `/boot/config.txt` em versões antigas), adicione a linha abaixo
+  e **reinicie**:
+  ```
+  gpio=5,6,13,19=ip,pd
+  ```
+  Confira depois com: `pinctrl get 5,6,13,19` → os quatro devem mostrar `pd`.
+- **Repouso OK (tudo 0), mas apertar não faz nada** → pinos/fiação errados
+  (confira linhas 16,20,21,26 e colunas 19,13,6,5) ou fio solto.
 - **Detecta, mas a tecla impressa não bate com a física** → orientação da
   matriz. Me mande a saída do `test_keypad` que eu reordeno `ROWS`/`COLS`/`KEYS`.
+
+> Ver o estado do pull: `pinctrl get 5,6,13,19` (Bookworm) ou
+> `raspi-gpio get 5,6,13,19` (versões antigas) — procure `pd`/`pu`/`pn`.
 
 ## 4. Como usar (mapa do teclado)
 

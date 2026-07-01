@@ -1,15 +1,14 @@
 /*
  * test_keypad.c - Testa/diagnostica o teclado matricial 4x4 ISOLADO (sem LCD).
+ * VERSAO PULL-DOWN (ativo-alto): linhas em repouso LOW, acionadas em HIGH;
+ * colunas com pull-down (repouso = 0), toque leva a coluna a 1.
  *
  *   Compila: gcc test_keypad.c -lwiringPi -o test_keypad
  *   Roda:    sudo ./test_keypad        (Ctrl+C para sair)
  *
- * Faz duas coisas:
- *  1) DIAGNOSTICO de repouso: sem nenhuma tecla, cada coluna DEVE ler 1 (HIGH),
- *     por causa do pull-up interno. Se alguma ler 0, o pull-up nao esta ativo
- *     ou ha fio solto/curto -> e por isso que "printa adoidado".
- *  2) SCAN: imprime UMA vez por tecla (espera soltar), mostrando linha/coluna
- *     e a tecla mapeada -- serve pra conferir a orientacao da matriz KEYS.
+ * Diagnostico de repouso (pull-down): cada coluna DEVE ler 0. Se alguma ler 1,
+ * o pull-down daquela coluna nao pegou (ex.: GPIO5/6 nascem em pull-up) -> veja
+ * o README (fixar pull-down no /boot/firmware/config.txt).
  */
 #include <stdio.h>
 #include <wiringPi.h>
@@ -26,16 +25,16 @@ static const char KEYS[4][4] = {
 /* varre a matriz uma vez; devolve 1 se achou tecla (r,c preenchidos) */
 static int scan(int *pr, int *pc) {
     for (int r = 0; r < 4; r++) {
-        digitalWrite(ROWS[r], LOW);
+        digitalWrite(ROWS[r], HIGH);
         delayMicroseconds(50);              /* deixa a linha estabilizar */
         for (int c = 0; c < 4; c++) {
-            if (digitalRead(COLS[c]) == LOW) {
-                digitalWrite(ROWS[r], HIGH);
+            if (digitalRead(COLS[c]) == HIGH) {
+                digitalWrite(ROWS[r], LOW);
                 *pr = r; *pc = c;
                 return 1;
             }
         }
-        digitalWrite(ROWS[r], HIGH);
+        digitalWrite(ROWS[r], LOW);
     }
     return 0;
 }
@@ -47,28 +46,28 @@ int main(void) {
     }
     for (int i = 0; i < 4; i++) {
         pinMode(ROWS[i], OUTPUT);
-        digitalWrite(ROWS[i], HIGH);
+        digitalWrite(ROWS[i], LOW);         /* repouso das linhas = LOW */
         pinMode(COLS[i], INPUT);
-        pullUpDnControl(COLS[i], PUD_UP);
+        pullUpDnControl(COLS[i], PUD_DOWN); /* colunas em pull-down     */
     }
     delay(50);
 
-    /* ---- 1) diagnostico de repouso (nenhuma tecla pressionada) ---- */
+    /* ---- diagnostico de repouso (nenhuma tecla) : colunas devem ler 0 ---- */
     printf("== Diagnostico (NAO aperte nada agora) ==\n");
     int suspeita = 0;
     for (int c = 0; c < 4; c++) {
         int v = digitalRead(COLS[c]);
         printf("  coluna %d (GPIO%2d) em repouso = %d %s\n",
-               c, COLS[c], v, v == 0 ? "  <-- DEVERIA SER 1!" : "");
-        if (v == 0) suspeita = 1;
+               c, COLS[c], v, v == 1 ? "  <-- DEVERIA SER 0! (pull-down nao pegou)" : "");
+        if (v == 1) suspeita = 1;
     }
     if (suspeita)
-        printf("\n>> Alguma coluna leu 0 sem tecla: pull-up nao ativo ou fio solto.\n"
-               ">> E a causa do 'printa adoidado'. Veja as dicas no README.\n\n");
+        printf("\n>> Alguma coluna leu 1 sem tecla: pull-down nao ativo nela.\n"
+               ">> Fixe pull-down no /boot/firmware/config.txt (veja o README).\n\n");
     else
-        printf("\n>> Repouso OK (tudo em 1). Agora pressione teclas:\n\n");
+        printf("\n>> Repouso OK (tudo em 0). Agora pressione teclas:\n\n");
 
-    /* ---- 2) scan sem spam (uma impressao por tecla) ---- */
+    /* ---- scan sem spam (uma impressao por tecla) ---- */
     for (;;) {
         int r, c;
         if (scan(&r, &c)) {

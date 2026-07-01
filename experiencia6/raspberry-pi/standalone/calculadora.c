@@ -34,25 +34,28 @@ static const char KEYS[4][4] = {
     {'*', '0', '#', 'D'},
 };
 
+/* Varredura em PULL-DOWN (ativo-alto): linhas em repouso LOW, acionadas em
+ * HIGH; colunas com pull-down (repouso 0) -> tecla leva a coluna a 1. */
 static void keypad_setup(void) {
     for (int i = 0; i < 4; i++) {
         pinMode(ROWS[i], OUTPUT);
-        digitalWrite(ROWS[i], HIGH);
+        digitalWrite(ROWS[i], LOW);
         pinMode(COLS[i], INPUT);
-        pullUpDnControl(COLS[i], PUD_UP);
+        pullUpDnControl(COLS[i], PUD_DOWN);
     }
 }
 
 static char keypad_scan(void) {
     for (int r = 0; r < 4; r++) {
-        digitalWrite(ROWS[r], LOW);
+        digitalWrite(ROWS[r], HIGH);
+        delayMicroseconds(50);
         for (int c = 0; c < 4; c++) {
-            if (digitalRead(COLS[c]) == LOW) {
-                digitalWrite(ROWS[r], HIGH);
+            if (digitalRead(COLS[c]) == HIGH) {
+                digitalWrite(ROWS[r], LOW);
                 return KEYS[r][c];
             }
         }
-        digitalWrite(ROWS[r], HIGH);
+        digitalWrite(ROWS[r], LOW);
     }
     return 0;
 }

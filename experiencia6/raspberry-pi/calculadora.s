@@ -5,14 +5,20 @@
  * PCS3732 - Laboratorio de Processadores
  * Experiencia 6: "Arquiteturas em Duelo" - lado ARM do duelo ARM vs RISC-V.
  *
- * Le dois operandos em BINARIO pelo teclado, executa a operacao escolhida
- * e mostra o resultado em DECIMAL e em BINARIO no monitor (HDMI/VGA).
+ * Le dois operandos em BINARIO de 4 bits (0 a 15) pelo teclado, executa a
+ * operacao escolhida e mostra o resultado em DECIMAL e BINARIO no monitor,
+ * junto do TEMPO DE EXECUCAO medido pelo contador de ciclos do ARM.
  *
  * Operacoes:  +  soma
  *             -  subtracao (resultado pode ser negativo)
  *             *  multiplicacao
  *             /  divisao inteira (quociente + resto, trata divisao por zero)
  *             !  fatorial (com deteccao de overflow de 64 bits)
+ *
+ * Tempo: lido com o contador virtual do ARM (cntvct_el0 / cntfrq_el0).
+ *   Uma operacao isolada e mais rapida que a resolucao do contador, entao a
+ *   operacao e repetida REPS vezes; reportamos o tempo total e o tempo/op.
+ *   (No RISC-V o analogo seria o CSR `time`/`cycle`.)
  *
  * Roda SOBRE o Linux (Raspberry Pi OS 64-bit) usando syscalls. NAO usa libc.
  *
@@ -22,10 +28,14 @@
  * Requer SO de 64 bits: confira com `uname -m`  ->  deve responder "aarch64".
  *
  * Mapa de registradores no laco principal (callee-saved, nao tocados pelas rotinas):
- *   x19 = operando A / acumulador do resultado
- *   x20 = operando B
+ *   x19 = operando A   (depois da medicao: tempo total em ns)
+ *   x20 = operando B   (depois da medicao: tempo por operacao em ns)
  *   w22 = caractere da operacao
- *   x23 = quociente (divisao)   x24 = resto (divisao)
+ *   x21 = resultado (soma/sub/mul/fatorial)
+ *   x23 = quociente     x24 = resto (divisao)
+ *   x25 = flag de overflow (fatorial)
+ *   x26 = contador de repeticoes
+ *   x27 = t0 (cntvct)   x28 = t1 (cntvct)
  */
 
 /* ---- Numeros de syscall (AArch64 / Linux) ---- */
@@ -38,10 +48,18 @@
 
         .equ BUFSZ, 64
 
+/* ---- Repeticoes para medir tempo (op unica < resolucao do contador) ---- */
+        .equ REPS,    1000000   /* 0x000F4240 */
+        .equ REPS_LO, 0x4240
+        .equ REPS_HI, 0x000F
+
+/* ---- 1 000 000 000 (ns por segundo) = 0x3B9ACA00 ---- */
+        .equ NS_LO,   0xCA00
+        .equ NS_HI,   0x3B9A
+
 /* ---- Caracteres (em hex, para nao depender da sintaxe de char do montador) ---- */
         .equ CH_0,    0x30      /* '0' */
         .equ CH_1,    0x31      /* '1' */
-        .equ CH_9,    0x39      /* '9' (nao usado, referencia) */
         .equ CH_PLUS, 0x2B      /* '+' */
         .equ CH_MIN,  0x2D      /* '-' */
         .equ CH_MUL,  0x2A      /* '*' */
@@ -58,13 +76,13 @@ banner:     .ascii  "\n==== Calculadora Binaria ARM (AArch64) - Exp 6 ====\n"
             .ascii  "Operacoes: + - * /  e  ! (fatorial)\n"
 banner_len = . - banner
 
-msg_a:      .ascii  "\nOperando A (binario): "
+msg_a:      .ascii  "\nOperando A (binario, 4 bits 0..15): "
 msg_a_len = . - msg_a
 
 msg_op:     .ascii  "Operacao (+ - * / !): "
 msg_op_len = . - msg_op
 
-msg_b:      .ascii  "Operando B (binario): "
+msg_b:      .ascii  "Operando B (binario, 4 bits 0..15): "
 msg_b_len = . - msg_b
 
 msg_res:    .ascii  "Resultado: "
@@ -85,6 +103,18 @@ msg_rem_len = . - msg_rem
 msg_nl:     .ascii  "\n"
 msg_nl_len = . - msg_nl
 
+msg_time1:  .ascii  "Tempo: "
+msg_time1_len = . - msg_time1
+
+msg_time2:  .ascii  " ns  ("
+msg_time2_len = . - msg_time2
+
+msg_time3:  .ascii  " repeticoes)  =>  "
+msg_time3_len = . - msg_time3
+
+msg_time4:  .ascii  " ns/operacao  [cntvct_el0]\n"
+msg_time4_len = . - msg_time4
+
 msg_divzero:.ascii  "ERRO: divisao por zero (operacao invalida). Tente novamente.\n"
 msg_divzero_len = . - msg_divzero
 
@@ -93,6 +123,9 @@ msg_ovf_len = . - msg_ovf
 
 msg_badop:  .ascii  "ERRO: operacao desconhecida.\n"
 msg_badop_len = . - msg_badop
+
+msg_range:  .ascii  "ERRO: entrada deve ter 4 bits (0 a 15, ex.: 0000 a 1111). Tente novamente.\n"
+msg_range_len = . - msg_range
 
 msg_cont:   .ascii  "\nContinuar? (s/n): "
 msg_cont_len = . - msg_cont
@@ -127,7 +160,7 @@ _start:
         bl      write_str
 
 .Lmain_loop:
-        /* ---- INPUT: operando A ---- */
+        /* ---- INPUT: operando A (4 bits, valores de 0 a 15) ---- */
         adr     x0, msg_a
         mov     x1, #msg_a_len
         bl      write_str
@@ -136,6 +169,8 @@ _start:
         bl      read_line
         adr     x0, bufA
         bl      parse_bin
+        cmp     x0, #15                 /* limite de 4 bits (0..15)     */
+        b.hi    .La_range               /* > 15 (sem sinal) -> invalido */
         mov     x19, x0                 /* A */
 
         /* ---- INPUT: operacao (decodificador de OpCode) ---- */
@@ -148,11 +183,12 @@ _start:
         adr     x0, bufOp
         ldrb    w22, [x0]               /* caractere da operacao */
 
-        /* fatorial usa apenas A -> desvia antes de pedir B */
+        /* fatorial usa apenas A -> vai direto p/ medicao (nao pede B) */
         cmp     w22, #CH_FACT
-        b.eq    .Ldo_fact
+        b.eq    .Ltimed
 
-        /* ---- INPUT: operando B ---- */
+.Lread_b:
+        /* ---- INPUT: operando B (4 bits, valores de 0 a 15) ---- */
         adr     x0, msg_b
         mov     x1, #msg_b_len
         bl      write_str
@@ -161,17 +197,19 @@ _start:
         bl      read_line
         adr     x0, bufB
         bl      parse_bin
+        cmp     x0, #15                 /* limite de 4 bits (0..15)     */
+        b.hi    .Lb_range               /* > 15 (sem sinal) -> invalido */
         mov     x20, x0                 /* B */
 
-        /* ---- decodificacao do OpCode ---- */
+        /* ---- decodificacao do OpCode + validacao (feita FORA da medicao) ---- */
         cmp     w22, #CH_PLUS
-        b.eq    .Ldo_add
+        b.eq    .Ltimed
         cmp     w22, #CH_MIN
-        b.eq    .Ldo_sub
+        b.eq    .Ltimed
         cmp     w22, #CH_MUL
-        b.eq    .Ldo_mul
+        b.eq    .Ltimed
         cmp     w22, #CH_DIV
-        b.eq    .Ldo_div
+        b.eq    .Lchk_div
 
         /* operacao invalida */
         adr     x0, msg_badop
@@ -179,27 +217,86 @@ _start:
         bl      write_str
         b       .Lask_cont
 
-/* ---- [+] ADD : instrucao direta do pipeline ---- */
-.Ldo_add:
-        add     x19, x19, x20
-        b       .Lshow
+.Lchk_div:
+        cbz     x20, .Ldiv_zero         /* B == 0 -> erro, sem medir */
+        b       .Ltimed
 
-/* ---- [-] SUB : subtracao (pode dar negativo) ---- */
-.Ldo_sub:
-        sub     x19, x19, x20
-        b       .Lshow
+/* ============ MEDICAO DE TEMPO (contador virtual do ARM) ============ */
+.Ltimed:
+        mov     x26, #REPS_LO
+        movk    x26, #REPS_HI, lsl #16  /* x26 = REPS (contador)          */
+        mrs     x27, cntvct_el0         /* t0 = contador virtual (ticks)  */
 
-/* ---- [*] MUL ---- */
-.Ldo_mul:
-        mul     x19, x19, x20
-        b       .Lshow
+.Ltimed_loop:
+        /* decodificador de OpCode -> ULA */
+        cmp     w22, #CH_PLUS
+        b.eq    .Lt_add
+        cmp     w22, #CH_MIN
+        b.eq    .Lt_sub
+        cmp     w22, #CH_MUL
+        b.eq    .Lt_mul
+        cmp     w22, #CH_DIV
+        b.eq    .Lt_div
+        /* [!] FAT : fatorial iterativo com monitor de overflow */
+        mov     x0, x19
+        bl      factorial               /* x0 = A!, x1 = overflow */
+        mov     x21, x0
+        mov     x25, x1
+        b       .Lt_next
+.Lt_add:                                /* [+] ADD */
+        add     x21, x19, x20
+        b       .Lt_next
+.Lt_sub:                                /* [-] SUB (pode dar negativo) */
+        sub     x21, x19, x20
+        b       .Lt_next
+.Lt_mul:                                /* [*] MUL */
+        mul     x21, x19, x20
+        b       .Lt_next
+.Lt_div:                                /* [/] DIV : quociente + resto */
+        sdiv    x23, x19, x20
+        msub    x24, x23, x20, x19      /* resto = A - quoc*B */
+        mov     x21, x23
+.Lt_next:
+        subs    x26, x26, #1
+        b.ne    .Ltimed_loop
 
-/* ---- [/] DIV : trata B == 0 sem derrubar o programa ---- */
-.Ldo_div:
-        cbz     x20, .Ldiv_zero
-        sdiv    x23, x19, x20           /* quociente               */
-        msub    x24, x23, x20, x19      /* resto = A - quoc*B       */
+        mrs     x28, cntvct_el0         /* t1 */
 
+        /* fatorial com overflow -> erro (nao ocorre com 4 bits; protecao N-bits) */
+        cmp     w22, #CH_FACT
+        b.ne    .Lcalc_time
+        cbnz    x25, .Lfact_ovf
+
+.Lcalc_time:
+        /* ns_total = (t1 - t0) * 1e9 / cntfrq ;  ns_op = ns_total / REPS */
+        sub     x9,  x28, x27           /* delta de ticks              */
+        mrs     x10, cntfrq_el0         /* frequencia do contador (Hz) */
+        mov     x11, #NS_LO
+        movk    x11, #NS_HI, lsl #16    /* x11 = 1 000 000 000         */
+        mul     x12, x9, x11
+        udiv    x19, x12, x10           /* x19 = tempo total (ns)      */
+        mov     x9,  #REPS_LO
+        movk    x9,  #REPS_HI, lsl #16
+        udiv    x20, x19, x9            /* x20 = tempo por operacao(ns)*/
+
+        /* ---- imprime o RESULTADO (Binario -> ASCII -> buffer de video) ---- */
+        cmp     w22, #CH_DIV
+        b.eq    .Lprint_div
+        adr     x0, msg_res
+        mov     x1, #msg_res_len
+        bl      write_str
+        mov     x0, x21
+        bl      print_dec
+        adr     x0, msg_bin
+        mov     x1, #msg_bin_len
+        bl      write_str
+        mov     x0, x21
+        bl      print_bin
+        adr     x0, msg_close
+        mov     x1, #msg_close_len
+        bl      write_str
+        b       .Lprint_time
+.Lprint_div:
         adr     x0, msg_quo
         mov     x1, #msg_quo_len
         bl      write_str
@@ -213,41 +310,53 @@ _start:
         adr     x0, msg_nl
         mov     x1, #msg_nl_len
         bl      write_str
+
+        /* ---- imprime o TEMPO de execucao ---- */
+.Lprint_time:
+        adr     x0, msg_time1
+        mov     x1, #msg_time1_len
+        bl      write_str
+        mov     x0, x19                 /* tempo total (ns) */
+        bl      print_dec
+        adr     x0, msg_time2
+        mov     x1, #msg_time2_len
+        bl      write_str
+        mov     x0, #REPS_LO
+        movk    x0, #REPS_HI, lsl #16   /* REPS */
+        bl      print_dec
+        adr     x0, msg_time3
+        mov     x1, #msg_time3_len
+        bl      write_str
+        mov     x0, x20                 /* tempo por operacao (ns) */
+        bl      print_dec
+        adr     x0, msg_time4
+        mov     x1, #msg_time4_len
+        bl      write_str
         b       .Lask_cont
+
+/* ---- erros que abortam a operacao (sem medir tempo) ---- */
 .Ldiv_zero:
         adr     x0, msg_divzero
         mov     x1, #msg_divzero_len
         bl      write_str
         b       .Lask_cont
-
-/* ---- [!] FAT : fatorial iterativo com monitor de overflow ---- */
-.Ldo_fact:
-        mov     x0, x19
-        bl      factorial               /* x0 = A!, x1 = flag overflow */
-        cbnz    x1, .Lfact_ovf
-        mov     x19, x0
-        b       .Lshow
 .Lfact_ovf:
         adr     x0, msg_ovf
         mov     x1, #msg_ovf_len
         bl      write_str
         b       .Lask_cont
 
-/* ---- saida: decimal + binario (Binario -> ASCII -> buffer de video) ---- */
-.Lshow:
-        adr     x0, msg_res
-        mov     x1, #msg_res_len
+/* ---- entrada fora da faixa de 4 bits (0..15): avisa e re-pergunta ---- */
+.La_range:
+        adr     x0, msg_range
+        mov     x1, #msg_range_len
         bl      write_str
-        mov     x0, x19
-        bl      print_dec
-        adr     x0, msg_bin
-        mov     x1, #msg_bin_len
+        b       .Lmain_loop             /* re-pergunta A */
+.Lb_range:
+        adr     x0, msg_range
+        mov     x1, #msg_range_len
         bl      write_str
-        mov     x0, x19
-        bl      print_bin
-        adr     x0, msg_close
-        mov     x1, #msg_close_len
-        bl      write_str
+        b       .Lread_b                /* re-pergunta apenas B */
 
 /* ---- perguntar se continua ---- */
 .Lask_cont:

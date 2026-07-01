@@ -3,8 +3,14 @@
 Calculadora binária em **Assembly ARM64 (AArch64)** rodando no **Raspberry Pi 3
 (Cortex-A53)** — o lado *ARM* do duelo ARM vs RISC-V (ESP32).
 
-Lê dois operandos em **binário** pelo teclado, executa a operação e mostra o
-resultado em **decimal e binário** no monitor (HDMI/VGA).
+Lê dois operandos em **binário de 4 bits (valores de 0 a 15, `0000` a `1111`)**
+pelo teclado, executa a operação e mostra o resultado em **decimal e binário**
+no monitor (HDMI/VGA), junto do **tempo de execução** medido pelo contador de
+ciclos do próprio ARM. Entradas fora da faixa são rejeitadas com aviso, sem
+derrubar o programa (requisito de estabilidade de erro — RNF01).
+
+> Apenas as **entradas** são limitadas a 4 bits. O **resultado** usa a largura
+> necessária (ex.: `1111 * 1111 = 225`, `0101! = 120`).
 
 | Operação | Símbolo | Observação |
 |----------|:-------:|------------|
@@ -90,30 +96,64 @@ Limpar artefatos: `make clean`
 ==== Calculadora Binaria ARM (AArch64) - Exp 6 ====
 Operacoes: + - * /  e  ! (fatorial)
 
-Operando A (binario): 1010
+Operando A (binario, 4 bits 0..15): 1010
 Operacao (+ - * / !): +
-Operando B (binario): 0101
+Operando B (binario, 4 bits 0..15): 0101
 Resultado: 15  (binario: 1111)
+Tempo: 4000000 ns  (1000000 repeticoes)  =>  4 ns/operacao  [cntvct_el0]
 
-Operando A (binario): 1111
+Operando A (binario, 4 bits 0..15): 10000
+ERRO: entrada deve ter 4 bits (0 a 15, ex.: 0000 a 1111). Tente novamente.
+
+Operando A (binario, 4 bits 0..15): 1111
 Operacao (+ - * / !): /
-Operando B (binario): 0000
+Operando B (binario, 4 bits 0..15): 0000
 ERRO: divisao por zero (operacao invalida). Tente novamente.
 
-Operando A (binario): 0101
+Operando A (binario, 4 bits 0..15): 0101
 Operacao (+ - * / !): !
 Resultado: 120  (binario: 1111000)
+Tempo: 21000000 ns  (1000000 repeticoes)  =>  21 ns/operacao  [cntvct_el0]
 
 Continuar? (s/n): n
 ```
 
-Valores de conferência: `1010-1111 = -5`; `0110*0111 = 42`; `1111/0100` →
-quociente `3`, resto `3`; `10100! (20!) = 2432902008176640000`; `10101! (21!)`
-→ erro de overflow.
+> Os valores de tempo acima são **ilustrativos** — dependem do clock do seu Pi.
+> Erros (faixa, divisão por zero, overflow) não são medidos.
+
+Valores de conferência (entradas de 0 a 15): `1010-1111 = -5`; `0110*0111 = 42`;
+`1111/0100` → quociente `3`, resto `3`; `1111! (15!) = 1307674368000`. Entradas
+como `10000` (16) são rejeitadas por passarem de 4 bits.
 
 > O resultado negativo (ex.: `-5`) é mostrado em **sinal-módulo** no campo
 > binário (`-101`) para facilitar a leitura. Internamente o ARM opera em
 > complemento de dois nos registradores de 64 bits.
+
+---
+
+## Como o tempo é medido
+
+Uma operação isolada (`add`, `mul`, ...) leva **poucos nanossegundos** — bem
+menos que a resolução do contador de tempo do Pi (~52 ns/tick a 19,2 MHz). Se
+medíssemos uma única operação, o resultado seria quase sempre `0`. Por isso a
+operação é executada **`REPS = 1 000 000` vezes** e reportamos:
+
+- **tempo total** do lote de repetições;
+- **tempo por operação** = total ÷ `REPS`.
+
+| | Assembly (`calculadora.s`) | C (`calculadora.c`) |
+|---|---|---|
+| Fonte de tempo | `cntvct_el0` (contador virtual do ARM, lido por `mrs`) | `clock_gettime(CLOCK_MONOTONIC)` |
+| Conversão p/ ns | `× 1e9 / cntfrq_el0` | direto (`tv_sec`/`tv_nsec`) |
+
+O uso do `cntvct_el0` no Assembly é proposital: é um **registrador de sistema da
+arquitetura ARM**, análogo ao CSR `time`/`cycle` do RISC-V — ou seja, os dois
+lados do duelo medem tempo com o mesmo tipo de recurso de hardware. Para mudar o
+número de repetições, altere `REPS` (`.equ REPS` no `.s`; `#define REPS` no `.c`).
+
+> Como os operandos são fixos numa rodada, no `.s` o laço genuinamente repete a
+> instrução; no `.c` os operandos e o *sink* são `volatile` para impedir que o
+> `-O2` elimine ou "ice" o laço.
 
 ---
 
@@ -123,14 +163,16 @@ O enunciado pede comparar a operação em **N bits (de 4 até 64)**. O ponto do
 duelo:
 
 - **Raspberry Pi 3 (ARM Cortex-A53, 64 bits):** registradores de 64 bits operam
-  inteiros grandes em um único ciclo. Ótima escalabilidade — `20!` cabe direto
-  num registrador de 64 bits.
+  inteiros grandes em um único ciclo. Ótima escalabilidade.
 - **ESP32 (RISC-V, 32 bits):** números que excedem 32 bits exigem **instruções
   encadeadas** (somar partes baixas + *carry* + partes altas), gerando *overhead*
   de ciclos.
 
-A entrada de 4 bits (0–15) é só o mínimo da bancada; a calculadora opera em até
-64 bits — daí a faixa "4 a 64 bits" para a comparação no relatório.
+A entrada é de **4 bits (0–15)**, o mínimo da bancada — com isso o maior
+fatorial é `15! = 1307674368000`, que cabe folgado num registrador de 64 bits.
+O **monitor de overflow** do `!` fica como proteção para a generalização em N
+bits (`20!` ainda cabe em 64 bits, `21!` estoura) — daí a faixa "4 a 64 bits"
+usada na comparação do relatório.
 
 ---
 

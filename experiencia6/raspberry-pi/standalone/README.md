@@ -81,6 +81,26 @@ sudo ./calculadora # wiringPi/GPIO costuma exigir root  (ou: make run)
 
 ---
 
+## Problemas comuns (teclado)
+
+Rode o diagnóstico: `gcc test_keypad.c -lwiringPi -o test_keypad && sudo ./test_keypad`
+
+- **"Printa adoidado" sem apertar nada** → as colunas estão flutuando (pull-up
+  interno não ativo ou fio solto). No diagnóstico, alguma coluna lê `0` em
+  repouso. Correções:
+  - Confira a fiação das colunas (GPIO 19,13,6,5) — um fio solto faz isso.
+  - Force os pull-ups pela CLI e teste de novo:
+    `raspi-gpio set 19,13,6,5 ip pu` e depois `raspi-gpio get 19` (deve mostrar `pull=UP`).
+  - Solução persistente: em `/boot/firmware/config.txt` (Bookworm; ou
+    `/boot/config.txt` em versões antigas) adicione `gpio=19,13,6,5=ip,pu` e reinicie.
+  - Verifique o wiringPi: `gpio -v` — em Bookworm use o fork mantido
+    ([WiringPi/WiringPi](https://github.com/WiringPi/WiringPi)); versões antigas
+    podem ignorar `pullUpDnControl`.
+- **Repouso OK, mas apertar não faz nada** → pinos/fiação errados (confira
+  linhas 16,20,21,26 e colunas 19,13,6,5).
+- **Detecta, mas a tecla impressa não bate com a física** → orientação da
+  matriz. Me mande a saída do `test_keypad` que eu reordeno `ROWS`/`COLS`/`KEYS`.
+
 ## 4. Como usar (mapa do teclado)
 
 ```

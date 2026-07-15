@@ -16,7 +16,7 @@ botões** e **temporização corrigida contra drift**.
 | ID | Requisito | Como é atendido no código |
 |----|-----------|---------------------------|
 | **RF01** | Temporização 1 Hz (jitter < 5 ms) | Agenda **absoluta** com `time.perf_counter()`: `proximo += periodo` a cada batida, em vez de `sleep(periodo)` puro — elimina o acúmulo de erro. |
-| **RF02** | Controle de BPM dinâmico | Dois botões disparam callbacks que só atualizam a variável global `_bpm` (protegida por `Lock`). O laço sonoro **não é interrompido**. |
+| **RF02** | Controle de BPM dinâmico | Botões disparam callbacks que só atualizam variáveis globais (`_bpm`, protegida por `Lock`). O laço sonoro **não é interrompido**. |
 | **RF03** | Modulação PWM | Servo alterna entre 5% e 10% de duty (0°↔180°, varredura pendular); LED faz **rampa de brilho** (100%→0%) via PWM a 1 kHz preenchendo o intervalo. |
 | **RNF01** | Debouncing físico | `GPIO.add_event_detect(pino, GPIO.FALLING, callback=..., bouncetime=200)` — ignora reativações por 200 ms após o gatilho. |
 
@@ -24,18 +24,28 @@ botões** e **temporização corrigida contra drift**.
 
 ## Fiação (numeração BCM)
 
-| Componente | GPIO (BCM) | Pino físico | Observação |
-|------------|:----------:|:-----------:|------------|
-| Botão **+BPM** | GPIO17 | 11 | Outro terminal no **GND**. Pull-up interno → borda de descida. |
-| Botão **−BPM** | GPIO27 | 13 | Idem. |
-| **LED** de status | GPIO18 | 12 | Em série com **resistor de 330 Ω** para o GND. |
-| **Servo SG90** (sinal) | GPIO12 | 32 | `+5V` e `GND` do servo na alimentação do Pi. |
-| **Buzzer** (sinal) | GPIO22 | 15 | Outro terminal no GND (buzzer **ativo**, on/off digital). |
+Placa: **Freenove Projects Board**. Os quatro **botões coloridos** já estão na
+placa (active-low, com pull-up), então só o LED, o servo e o buzzer precisam de
+fiação externa.
 
-> **Botões:** o código usa `PUD_UP` (pull-up interno) e detecta `GPIO.FALLING`.
-> Ligue cada botão entre o GPIO e o **GND** — ao pressionar, o pino vai de
-> 3,3 V para 0 V (borda de descida). Se preferir os resistores externos de
-> pull-down do diagrama, troque para `PUD_DOWN` + `GPIO.RISING`.
+| Componente | GPIO (BCM) | Observação |
+|------------|:----------:|------------|
+| Botão **+BPM** | GPIO26 | Botão colorido da Freenove. |
+| Botão **−BPM** | GPIO20 | Botão colorido da Freenove. |
+| Botão **liga/desliga som** | GPIO16 | Torna o buzzer configurável (RF do enunciado). |
+| Botão **pausa/retoma** | GPIO21 | Play/pause do metrônomo. |
+| **LED** de status | GPIO18 | Em série com **resistor de 330 Ω** para o GND. |
+| **Servo SG90** (sinal) | GPIO12 | `+5V` e `GND` do servo na alimentação do Pi. |
+| **Buzzer** (sinal) | GPIO22 | Buzzer **ativo**, on/off digital. |
+
+> **Botões (Freenove):** são **active-low** — o pino fica em 3,3 V em repouso e
+> vai a 0 V quando pressionado (borda de descida). Por isso o código usa
+> `PUD_UP` + `GPIO.FALLING`. A ordem cor↔função é livre: troque os números em
+> `PIN_BTN_*` no topo do `metronomo.py` para casar com a cor que você quiser.
+
+> **LED, servo e buzzer:** os GPIOs 18/12/22 são um ponto de partida. Se na sua
+> montagem esses atuadores estiverem em outros pinos (ou usarem componentes
+> onboard da placa), ajuste `PIN_LED`, `PIN_SERVO` e `PIN_BUZZER`.
 
 > **Servo:** o SG90 pode puxar corrente demais do Pi em movimento; o ideal é
 > alimentá-lo por uma **fonte 5 V externa** com o **GND comum** ao do Pi.
@@ -72,13 +82,16 @@ Exemplo de saída ao pressionar os botões:
 
 ```
 ==== Metronomo PWM (Exp 7) - PCS3732 ====
-BPM inicial: 60  |  buzzer: ligado
-Botoes: GPIO17 = +5 BPM   GPIO27 = -5 BPM
+BPM inicial: 60  |  som: ligado
+Botoes (Freenove):
+  GPIO26 = +5 BPM     GPIO20 = -5 BPM
+  GPIO16 = liga/desliga som   GPIO21 = pausa/retoma
 Ctrl+C para sair.
 
 > BPM alterado para 65
 > BPM alterado para 70
-> BPM alterado para 65
+> Som desligado
+> Metronomo pausado
 ```
 
 ---

@@ -32,11 +32,16 @@ except (ImportError, RuntimeError):
 # ---------------------------------------------------------------------------
 # Mapa de pinos (numeracao BCM) - ver README.md para a fiacao
 # ---------------------------------------------------------------------------
-PIN_BTN_UP   = 17   # botao: aumenta o BPM
-PIN_BTN_DOWN = 27   # botao: diminui o BPM
-PIN_LED      = 18   # LED de status (PWM, atraves de resistor 330 ohm) [HW PWM0]
-PIN_SERVO    = 12   # servomotor SG90 (sinal PWM 50 Hz)                [HW PWM0]
-PIN_BUZZER   = 22   # buzzer (sinal digital on/off)
+# Botoes coloridos da Freenove Projects Board (active-low: pressionado = LOW).
+# A ordem abaixo casa com a cor que voce preferir - basta trocar os numeros.
+PIN_BTN_UP     = 26   # botao: aumenta o BPM
+PIN_BTN_DOWN   = 20   # botao: diminui o BPM
+PIN_BTN_BUZZER = 16   # botao: liga/desliga o som (buzzer configuravel)
+PIN_BTN_PLAY   = 21   # botao: pausa / retoma o metronomo
+
+PIN_LED      = 17   # LED de status (PWM, atraves de resistor 330 ohm) [HW PWM0]
+PIN_SERVO    = 18   # servomotor SG90 (sinal PWM 50 Hz)                [HW PWM0]
+PIN_BUZZER   = 12   # buzzer (sinal digital on/off)
 
 # ---------------------------------------------------------------------------
 # Parametros
@@ -65,6 +70,7 @@ DEBOUNCE_MS = 200              # RNF01: janela de rejeicao de ruido mecanico
 _lock = threading.Lock()
 _bpm = BPM_INICIAL
 _buzzer_ligado = True
+_ativo = True                 # play/pause (botao GPIO21)
 _running = True
 
 
@@ -84,7 +90,8 @@ def ajustar_bpm(delta):
 
 
 # ---------------------------------------------------------------------------
-# Callbacks dos botoes (rodam na thread de eventos do RPi.GPIO)
+# Callbacks dos botoes (rodam na thread de eventos do RPi.GPIO).
+# So atualizam estado compartilhado - nunca bloqueiam o laco do metronomo.
 # ---------------------------------------------------------------------------
 def _cb_up(channel):
     ajustar_bpm(+BPM_STEP)
@@ -94,6 +101,22 @@ def _cb_down(channel):
     ajustar_bpm(-BPM_STEP)
 
 
+def _cb_buzzer(channel):
+    global _buzzer_ligado
+    with _lock:
+        _buzzer_ligado = not _buzzer_ligado
+        estado = _buzzer_ligado
+    print(f"> Som {'ligado' if estado else 'desligado'}")
+
+
+def _cb_play(channel):
+    global _ativo
+    with _lock:
+        _ativo = not _ativo
+        estado = _ativo
+    print(f"> Metronomo {'tocando' if estado else 'pausado'}")
+
+
 # ---------------------------------------------------------------------------
 # Setup / teardown de hardware
 # ---------------------------------------------------------------------------
@@ -101,10 +124,10 @@ def setup():
     GPIO.setmode(GPIO.BCM)
     GPIO.setwarnings(False)
 
-    # Botoes: entrada com pull-up interno. O botao liga o pino ao GND, entao
-    # a pressao gera uma BORDA DE DESCIDA (3.3V -> 0V) -> GPIO.FALLING.
-    GPIO.setup(PIN_BTN_UP,   GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    GPIO.setup(PIN_BTN_DOWN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    # Botoes coloridos da Freenove: active-low. Pull-up interno; pressionar leva
+    # o pino de 3.3V a 0V -> BORDA DE DESCIDA -> GPIO.FALLING.
+    for pino in (PIN_BTN_UP, PIN_BTN_DOWN, PIN_BTN_BUZZER, PIN_BTN_PLAY):
+        GPIO.setup(pino, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
     # Atuadores
     GPIO.setup(PIN_LED,    GPIO.OUT)
@@ -118,10 +141,14 @@ def setup():
 
     # RNF01: debouncing por software. A flag do controlador ignora interrupcoes
     # subsequentes por 'bouncetime' ms apos o primeiro gatilho.
-    GPIO.add_event_detect(PIN_BTN_UP,   GPIO.FALLING,
-                          callback=_cb_up,   bouncetime=DEBOUNCE_MS)
-    GPIO.add_event_detect(PIN_BTN_DOWN, GPIO.FALLING,
-                          callback=_cb_down, bouncetime=DEBOUNCE_MS)
+    GPIO.add_event_detect(PIN_BTN_UP,     GPIO.FALLING,
+                          callback=_cb_up,     bouncetime=DEBOUNCE_MS)
+    GPIO.add_event_detect(PIN_BTN_DOWN,   GPIO.FALLING,
+                          callback=_cb_down,   bouncetime=DEBOUNCE_MS)
+    GPIO.add_event_detect(PIN_BTN_BUZZER, GPIO.FALLING,
+                          callback=_cb_buzzer, bouncetime=DEBOUNCE_MS)
+    GPIO.add_event_detect(PIN_BTN_PLAY,   GPIO.FALLING,
+                          callback=_cb_play,   bouncetime=DEBOUNCE_MS)
 
     return led, servo
 
@@ -136,6 +163,8 @@ def _fade_led(led, restante):
         return
     passo = restante / FADE_STEPS
     for i in range(FADE_STEPS):
+        if not _running:            # sai na hora ao receber Ctrl+C
+            break
         duty = 100.0 * (1.0 - (i + 1) / FADE_STEPS)   # 100 -> 0
         led.ChangeDutyCycle(duty)
         time.sleep(passo)
@@ -154,6 +183,17 @@ def loop_metronomo(led, servo):
     proximo = time.perf_counter()
 
     while _running:
+        # ---- play/pause (botao GPIO21) --------------------------------
+        with _lock:
+            ativo = _ativo
+        if not ativo:
+            GPIO.output(PIN_BUZZER, GPIO.LOW)
+            led.ChangeDutyCycle(0)
+            servo.ChangeDutyCycle(0)     # solta o servo enquanto pausado
+            time.sleep(0.05)
+            proximo = time.perf_counter()  # ao retomar, recomeca sem "correr atras"
+            continue
+
         # ---- instante da batida ---------------------------------------
         # 1) Servo: alterna o "pendulo" entre dois angulos (RF03 - varredura).
         lado_direito = not lado_direito
@@ -213,8 +253,10 @@ def main():
 
     led, servo = setup()
     print("==== Metronomo PWM (Exp 7) - PCS3732 ====")
-    print(f"BPM inicial: {_bpm}  |  buzzer: {'ligado' if _buzzer_ligado else 'desligado'}")
-    print(f"Botoes: GPIO{PIN_BTN_UP} = +{BPM_STEP} BPM   GPIO{PIN_BTN_DOWN} = -{BPM_STEP} BPM")
+    print(f"BPM inicial: {_bpm}  |  som: {'ligado' if _buzzer_ligado else 'desligado'}")
+    print("Botoes (Freenove):")
+    print(f"  GPIO{PIN_BTN_UP} = +{BPM_STEP} BPM     GPIO{PIN_BTN_DOWN} = -{BPM_STEP} BPM")
+    print(f"  GPIO{PIN_BTN_BUZZER} = liga/desliga som   GPIO{PIN_BTN_PLAY} = pausa/retoma")
     print("Ctrl+C para sair.\n")
     try:
         loop_metronomo(led, servo)

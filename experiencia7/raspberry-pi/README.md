@@ -11,6 +11,30 @@ botões** e **temporização corrigida contra drift**.
 
 ---
 
+## Estrutura dos arquivos
+
+O enunciado pede primeiro os atuadores **isolados** e só depois a **integração**.
+Por isso há um módulo por atuador e o metrônomo integrado:
+
+| Arquivo | Papel | Item do enunciado |
+|---------|-------|-------------------|
+| [`led_pwm.py`](led_pwm.py) | LED por PWM: varre duty cycle e **testa várias frequências** | "controle de um LED usando PWM e teste diversas frequências" |
+| [`servo.py`](servo.py) | Servomotor SG90 por PWM (50 Hz), isolado | "controle de servomotor usando PWM" |
+| [`buzzer.py`](buzzer.py) | Buzzer isolado (ativo digital / passivo por tom) | "controle do buzzer" |
+| [`metronomo.py`](metronomo.py) | **Integração**: servo + buzzer + LED a cada 1 s | "temporização a cada 1 segundo" + Desafio (botões) |
+| [`RELATORIO.md`](RELATORIO.md) | Relatório: planos, resultados e Q&A teórica (ABNT) | perguntas teóricas + plano de integração/depuração |
+
+Rode cada teste isolado **antes** de integrar (é a base do plano de depuração):
+
+```bash
+make test-led      # ou: python3 led_pwm.py
+make test-servo    # ou: python3 servo.py
+make test-buzzer   # ou: python3 buzzer.py
+make run           # metrônomo integrado
+```
+
+---
+
 ## Requisitos atendidos (matriz de testes do enunciado)
 
 | ID | Requisito | Como é atendido no código |

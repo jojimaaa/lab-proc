@@ -39,9 +39,9 @@ PIN_BTN_DOWN   = 20   # botao: diminui o BPM
 PIN_BTN_BUZZER = 16   # botao: liga/desliga o som (buzzer configuravel)
 PIN_BTN_PLAY   = 21   # botao: pausa / retoma o metronomo
 
-PIN_LED      = 17   # LED de status (PWM, atraves de resistor 330 ohm) [HW PWM0]
-PIN_SERVO    = 18   # servomotor SG90 (sinal PWM 50 Hz)                [HW PWM0]
-PIN_BUZZER   = 12   # buzzer (sinal digital on/off)
+PIN_LED      = 17   # LED de status (PWM por software, via resistor 330 ohm)
+PIN_SERVO    = 18   # servomotor SG90 (sinal PWM 50 Hz)   [GPIO18 = PWM0 por HW]
+PIN_BUZZER   = 12   # buzzer (sinal digital on/off)       [GPIO12 = PWM0 por HW]
 
 # ---------------------------------------------------------------------------
 # Parametros

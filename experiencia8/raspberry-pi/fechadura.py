@@ -34,10 +34,10 @@ toca o Pi). Gere o par com:
     python3 fechadura.py --gerar-hash 2468
 
 Uso:
-  python3 fechadura.py                       # PIN padrao, servo + sensor digital
+  python3 fechadura.py                       # PIN padrao, servo + sensor ultrassonico
   python3 fechadura.py --pin 1357
   python3 fechadura.py --hash <sal$hash>     # implanta so o hash (modo producao)
-  python3 fechadura.py --sensor-tipo ultrassonico
+  python3 fechadura.py --sensor-trig 14 --sensor-echo 15
   python3 fechadura.py --trava-tipo rele --trava-pino 18
   python3 fechadura.py --lcd-addr 0x3F
   python3 fechadura.py --sem-lcd             # sem display: espelha status no console
@@ -59,7 +59,7 @@ from trava import Trava
 # ---------------------------------------------------------------------------
 # Parametros
 # ---------------------------------------------------------------------------
-PIN_PADRAO       = "2468"
+PIN_PADRAO       = "1234"
 SENHA_MIN        = 4          # RF01: sequencia de 4 a 6 digitos
 SENHA_MAX        = 6
 MAX_ERROS        = 3          # RNF01: erros consecutivos antes do bloqueio
@@ -72,7 +72,9 @@ ITERACOES_PBKDF2 = 100_000    # custo do KDF (RNF03) - ver RELATORIO
 # Pinos padrao (numeracao BCM) - ver README para a fiacao completa
 PIN_BUZZER = 12
 PIN_TRAVA  = 18
-PIN_SENSOR = 17
+PIN_SENSOR_TRIG = 14
+PIN_SENSOR_ECHO = 15
+LIMIAR_CM_PADRAO = 8.0
 LCD_ADDR   = 0x27
 
 # Estados da maquina
@@ -139,8 +141,8 @@ class Fechadura:
         self.kp  = Keypad()
         self.bz  = Buzzer(args.buzzer_pino, setup_gpio=False)
         self.lcd = abrir_saida(not args.sem_lcd, args.lcd_addr)
-        self.sensor = SensorTranca(tipo=args.sensor_tipo, pino=args.sensor_pino,
-                                   setup_gpio=False)
+        self.sensor = SensorTranca(trig=args.sensor_trig, echo=args.sensor_echo,
+                                   limiar_cm=args.sensor_limiar_cm, setup_gpio=False)
         self.trava = Trava(tipo=args.trava_tipo, pino=args.trava_pino,
                            setup_gpio=False)
 
@@ -286,7 +288,7 @@ class Fechadura:
         print("==== Fechadura Eletronica (Exp 8) - PCS3732 ====")
         print(f"  Teclado: digitos 0-9 | # submete | * apaga | D cancela")
         print(f"  Senha: {SENHA_MIN}-{SENHA_MAX} digitos | erros p/ bloqueio: {MAX_ERROS}")
-        print(f"  Sensor: {self.sensor.tipo} | Tranca: {self.trava.tipo}")
+        print(f"  Sensor: ultrassonico (HC-SR04) | Tranca: {self.trava.tipo}")
         print("  Ctrl+C para sair.\n")
         signal.signal(signal.SIGINT, self._sair)
         signal.signal(signal.SIGTERM, self._sair)
@@ -327,8 +329,9 @@ def main():
     p.add_argument("--pin", default=PIN_PADRAO, help=f"PIN inicial (padrao {PIN_PADRAO}).")
     p.add_argument("--hash", default=None,
                    help="Hash guardado 'sal$hash' (modo producao: sem texto plano).")
-    p.add_argument("--sensor-tipo", choices=["digital", "ultrassonico"], default="digital")
-    p.add_argument("--sensor-pino", type=int, default=PIN_SENSOR)
+    p.add_argument("--sensor-trig", type=int, default=PIN_SENSOR_TRIG)
+    p.add_argument("--sensor-echo", type=int, default=PIN_SENSOR_ECHO)
+    p.add_argument("--sensor-limiar-cm", type=float, default=LIMIAR_CM_PADRAO)
     p.add_argument("--trava-tipo", choices=["servo", "rele"], default="servo")
     p.add_argument("--trava-pino", type=int, default=PIN_TRAVA)
     p.add_argument("--buzzer-pino", type=int, default=PIN_BUZZER)

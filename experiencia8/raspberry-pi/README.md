@@ -3,8 +3,8 @@
 Fechadura eletrônica em **Python** rodando no **Raspberry Pi 3 (Cortex-A53)**.
 Entrada de **senha por teclado matricial 4×4**, status em **LCD 16×2 via I²C**,
 **feedback sonoro** por buzzer e **verificação da integridade física** por um
-sensor (reed switch/microchave ou ultrassônico). O ferrolho é movido por um
-**servomotor**. Tudo sob uma **máquina de estados não-bloqueante**.
+sensor **ultrassônico HC-SR04**. O ferrolho é movido por um **servomotor**.
+Tudo sob uma **máquina de estados não-bloqueante**.
 
 > Como nas Experiências 6 e 7, o RPi3 **não é um microcontrolador** — é um
 > computador Linux. Você escreve, roda e depura **dentro do próprio Pi**. Não há
@@ -21,7 +21,7 @@ O enunciado pede primeiro **cada componente isolado** e só depois a **integraç
 | [`keypad.py`](keypad.py) | Teclado matricial 4×4 (varredura + debounce, não-bloqueante) | Entrada de senha (RF01) |
 | [`lcd_i2c.py`](lcd_i2c.py) | LCD 16×2 HD44780 via PCF8574 (I²C) | Display de status (RF02) |
 | [`buzzer.py`](buzzer.py) | Buzzer com padrões sonoros **não-bloqueantes** | Feedback sonoro (RF04) |
-| [`sensor.py`](sensor.py) | Sensor de tranca (digital ou ultrassônico) | Integridade física (RF03) |
+| [`sensor.py`](sensor.py) | Sensor de tranca (ultrassônico HC-SR04) | Integridade física (RF03) |
 | [`trava.py`](trava.py) | Atuador do ferrolho (servo/relé) | Acionamento (RF05) |
 | [`fechadura.py`](fechadura.py) | **Integração**: máquina de estados da fechadura | Fluxo de estados + segurança |
 | [`RELATORIO.md`](RELATORIO.md) | Relatório: requisitos, arquitetura, planos, Q&A e segurança (ABNT) | Documentação completa |
@@ -69,8 +69,7 @@ sua montagem diferir.
 | **LCD** SCL | GPIO3 (pino 5) | I²C (fixo). VCC=5V, GND. |
 | **Buzzer** | GPIO12 | Buzzer **ativo**, on/off digital |
 | **Tranca** (servo) | GPIO18 | `+5V`/`GND` do servo, de preferência em fonte externa |
-| **Sensor** digital | GPIO17 | reed/microchave entre GPIO e GND (*pull-up* interno) |
-| **Sensor** ultrassônico | TRIG 23 / ECHO 24 | HC-SR04 — **ECHO precisa de divisor de tensão** |
+| **Sensor** ultrassônico | TRIG 14 / ECHO 15 | HC-SR04 — **ECHO precisa de divisor de tensão** |
 
 > **Teclado (pull-down):** o código usa varredura ativo-alto (igual à Exp 6).
 > GPIO13/19 já nascem em *pull-down*, mas **GPIO5/6 nascem em *pull-up***. Se o
@@ -84,12 +83,8 @@ sua montagem diferir.
 > **LCD:** o endereço I²C típico é `0x27` (PCF8574) ou `0x3F` (PCF8574A).
 > Descubra o seu com `make i2c` (`i2cdetect -y 1`) e passe em `--lcd-addr`.
 
-> **Sensor:** o padrão é **digital** (reed switch/microchave) — o mais simples
-> para "trancada × aberta" e o que casa com a análise de segurança do relatório
-> (ataque por ímã). Use `--sensor-tipo ultrassonico` para o HC-SR04.
-
 > **ECHO do HC-SR04 é 5V:** nunca ligue direto num GPIO de 3,3V. Use um divisor
-> resistivo (ex.: 1 kΩ + 2 kΩ) do ECHO para o GPIO24.
+> resistivo (ex.: 1 kΩ + 2 kΩ) do ECHO para o GPIO15.
 
 ---
 
@@ -110,9 +105,9 @@ Para o servo sem tremor (opcional): `sudo apt install pigpio python3-pigpio && s
 No diretório `experiencia8/raspberry-pi/`, dentro do Pi:
 
 ```bash
-python3 fechadura.py                      # PIN padrão 2468, servo + sensor digital + LCD
+python3 fechadura.py                      # PIN padrão 2468, servo + sensor ultrassônico + LCD
 python3 fechadura.py --pin 1357           # troca o PIN inicial
-python3 fechadura.py --sensor-tipo ultrassonico
+python3 fechadura.py --sensor-trig 14 --sensor-echo 15
 python3 fechadura.py --trava-tipo rele --trava-pino 18
 python3 fechadura.py --lcd-addr 0x3F
 python3 fechadura.py --sem-lcd            # sem LCD: status espelhado no console
@@ -156,8 +151,8 @@ python3 fechadura.py --hash "<sal$hash>"   # o PIN em texto nunca toca o Pi
   demais para senhas; usa-se PBKDF2 (KDF lenta), com comparação em **tempo
   constante** (`hmac.compare_digest`) contra *timing attacks*. Ver RELATORIO §7.
 
-- **Sensor reed como caso de estudo.** É deliberadamente vulnerável a ímã
-  externo — o vetor de ataque analisado no relatório (tampering + spoofing).
+- **Sensor ultrassônico (HC-SR04)** para "trancada × aberta": mede a distância
+  até a porta e considera fechada abaixo de um limiar (`--sensor-limiar-cm`).
 
 ---
 

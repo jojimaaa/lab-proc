@@ -2,8 +2,7 @@
 # Experiencia 8 - PCS3732
 #
 # Uso:
-#   make run              -> fechadura integrada (servo + sensor digital + LCD)
-#   make run-ultrassonico -> integrada usando sensor ultrassonico (HC-SR04)
+#   make run              -> fechadura integrada (servo + sensor ultrassonico + LCD)
 #   make run-sem-lcd      -> integrada sem LCD (status espelhado no console)
 #   make test-keypad      -> teste isolado do teclado matricial 4x4
 #   make test-lcd         -> teste isolado do LCD I2C (Hello World)
@@ -20,9 +19,6 @@ PIN   ?= 2468
 
 run:
 	$(PYTHON) fechadura.py
-
-run-ultrassonico:
-	$(PYTHON) fechadura.py --sensor-tipo ultrassonico
 
 run-sem-lcd:
 	$(PYTHON) fechadura.py --sem-lcd
@@ -54,5 +50,5 @@ install:
 clean:
 	rm -rf __pycache__ *.pyc
 
-.PHONY: run run-ultrassonico run-sem-lcd test-keypad test-lcd test-buzzer \
+.PHONY: run run-sem-lcd test-keypad test-lcd test-buzzer \
         test-sensor test-trava i2c gerar-hash install clean

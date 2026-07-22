@@ -26,14 +26,27 @@ PIN_TRIG_PADRAO   = 14          # HC-SR04 trigger
 PIN_ECHO_PADRAO   = 15          # HC-SR04 echo (via divisor de tensao!)
 LIMIAR_CM_PADRAO  = 8.0         # abaixo disso: porta fechada (trancada)
 VEL_SOM_CM_S      = 34300.0     # velocidade do som ~343 m/s
+DEBOUNCE_N_PADRAO = 3           # leituras iguais e consecutivas p/ confirmar transicao
 
 
 class SensorTranca:
-    """Abstrai o sensor de estado: expoe esta_trancada() -> bool."""
+    """Abstrai o sensor de estado: expoe esta_trancada() -> bool.
+
+    O HC-SR04 pode oscilar entre leituras (eco perdido, reflexo em angulo,
+    porta parada bem no limiar) e trocar de estado rapido demais. Por isso
+    esta_trancada() so confirma a transicao apos `debounce_n` leituras
+    consecutivas concordando com o novo estado (debounce por contagem,
+    equivalente ao usado no teclado - RNF04).
+    """
 
     def __init__(self, trig=PIN_TRIG_PADRAO, echo=PIN_ECHO_PADRAO,
-                 limiar_cm=LIMIAR_CM_PADRAO, setup_gpio=True):
+                 limiar_cm=LIMIAR_CM_PADRAO, setup_gpio=True,
+                 debounce_n=DEBOUNCE_N_PADRAO):
         self.trig, self.echo, self.limiar_cm = trig, echo, limiar_cm
+        self.debounce_n = max(1, debounce_n)
+        self._estado_confirmado = None   # ultimo estado estavel reportado
+        self._candidato = None           # estado que esta tentando confirmar
+        self._contagem = 0
         if setup_gpio:
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
@@ -62,12 +75,44 @@ class SensorTranca:
         """Devolve a leitura crua (distancia em cm) util ao diagnostico."""
         return self._distancia_cm()
 
-    def esta_trancada(self):
-        """True se o sensor indica porta fechada/trancada."""
+    def _leitura_bruta(self):
+        """True/False para o estado da leitura atual, sem debounce."""
         d = self._distancia_cm()
         if d is None:
             return False                 # sem eco confiavel -> assume aberta
         return d <= self.limiar_cm
+
+    def esta_trancada(self):
+        """True se o sensor indica porta fechada/trancada (com debounce).
+
+        So propaga uma mudanca de estado apos `debounce_n` leituras
+        consecutivas concordando com o novo valor; leituras isoladas
+        divergentes (ruido/eco espurio) nao derrubam o estado confirmado.
+        """
+        leitura = self._leitura_bruta()
+
+        if self._estado_confirmado is None:
+            self._estado_confirmado = leitura   # primeira leitura define o estado inicial
+            self._candidato = leitura
+            self._contagem = self.debounce_n
+            return self._estado_confirmado
+
+        if leitura == self._estado_confirmado:
+            self._candidato = leitura
+            self._contagem = 0
+            return self._estado_confirmado
+
+        if leitura == self._candidato:
+            self._contagem += 1
+        else:
+            self._candidato = leitura
+            self._contagem = 1
+
+        if self._contagem >= self.debounce_n:
+            self._estado_confirmado = self._candidato
+            self._contagem = 0
+
+        return self._estado_confirmado
 
     def cleanup(self):
         GPIO.cleanup()
@@ -79,11 +124,14 @@ def main():
     p.add_argument("--echo", type=int, default=PIN_ECHO_PADRAO, help="GPIO ECHO (ultrassonico).")
     p.add_argument("--limiar-cm", type=float, default=LIMIAR_CM_PADRAO,
                    help="Distancia (cm) abaixo da qual a porta e considerada fechada.")
+    p.add_argument("--debounce", type=int, default=DEBOUNCE_N_PADRAO,
+                   help="Leituras consecutivas p/ confirmar uma transicao de estado.")
     args = p.parse_args()
 
-    s = SensorTranca(trig=args.trig, echo=args.echo, limiar_cm=args.limiar_cm)
+    s = SensorTranca(trig=args.trig, echo=args.echo, limiar_cm=args.limiar_cm,
+                      debounce_n=args.debounce)
     print("==== Teste de Sensor de Tranca (Exp 8) - HC-SR04 ====")
-    print(f"     TRIG=GPIO{args.trig} ECHO=GPIO{args.echo}, limiar {args.limiar_cm} cm")
+    print(f"     TRIG=GPIO{args.trig} ECHO=GPIO{args.echo}, limiar {args.limiar_cm} cm, debounce {args.debounce}")
     print(">> Abra/feche a porta e observe a transicao (Ctrl+C para sair):\n")
 
     anterior = None

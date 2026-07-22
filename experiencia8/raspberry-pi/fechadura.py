@@ -53,7 +53,7 @@ import binascii
 
 from keypad import Keypad
 from buzzer import Buzzer
-from sensor import SensorTranca
+from sensor import SensorTranca, DEBOUNCE_N_PADRAO as SENSOR_DEBOUNCE_N_PADRAO
 from trava import Trava
 
 # ---------------------------------------------------------------------------
@@ -142,7 +142,8 @@ class Fechadura:
         self.bz  = Buzzer(args.buzzer_pino, setup_gpio=False)
         self.lcd = abrir_saida(not args.sem_lcd, args.lcd_addr)
         self.sensor = SensorTranca(trig=args.sensor_trig, echo=args.sensor_echo,
-                                   limiar_cm=args.sensor_limiar_cm, setup_gpio=False)
+                                   limiar_cm=args.sensor_limiar_cm, setup_gpio=False,
+                                   debounce_n=args.sensor_debounce)
         self.trava = Trava(tipo=args.trava_tipo, pino=args.trava_pino,
                            setup_gpio=False)
 
@@ -332,6 +333,8 @@ def main():
     p.add_argument("--sensor-trig", type=int, default=PIN_SENSOR_TRIG)
     p.add_argument("--sensor-echo", type=int, default=PIN_SENSOR_ECHO)
     p.add_argument("--sensor-limiar-cm", type=float, default=LIMIAR_CM_PADRAO)
+    p.add_argument("--sensor-debounce", type=int, default=SENSOR_DEBOUNCE_N_PADRAO,
+                   help="Leituras consecutivas do sensor p/ confirmar transicao (RNF04).")
     p.add_argument("--trava-tipo", choices=["servo", "rele"], default="servo")
     p.add_argument("--trava-pino", type=int, default=PIN_TRAVA)
     p.add_argument("--buzzer-pino", type=int, default=PIN_BUZZER)

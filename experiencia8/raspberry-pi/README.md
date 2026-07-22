@@ -105,7 +105,7 @@ Para o servo sem tremor (opcional): `sudo apt install pigpio python3-pigpio && s
 No diretório `experiencia8/raspberry-pi/`, dentro do Pi:
 
 ```bash
-python3 fechadura.py                      # PIN padrão 2468, servo + sensor ultrassônico + LCD
+python3 fechadura.py                      # PIN padrão 1234, servo + sensor ultrassônico + LCD
 python3 fechadura.py --pin 1357           # troca o PIN inicial
 python3 fechadura.py --sensor-trig 14 --sensor-echo 15
 python3 fechadura.py --trava-tipo rele --trava-pino 18

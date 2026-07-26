@@ -1,0 +1,65 @@
+"""Bloco 6 — servidor de aplicação.
+
+Desacopla o núcleo de processamento das interfaces de saída (Seção 7.4 do
+documento de arquitetura): serve o frontend web e expõe, por API local, o
+estado da tradução, as métricas de desempenho e o fluxo de vídeo MJPEG.
+
+Os provedores são funções sem argumento, o que permite testar o servidor
+isoladamente e substituir qualquer estágio sem alterá-lo.
+"""
+from __future__ import annotations
+
+import time
+
+from flask import Flask, Response, jsonify
+
+from .config import FRONTEND_DIR
+
+
+def create_app(state_provider, metrics_provider, info_provider=None,
+               frame_provider=None) -> Flask:
+    """Cria a aplicação Flask.
+
+    - ``state_provider()``  → dict com o estado da tradução (letra, palavra…)
+    - ``metrics_provider()``→ dict com as métricas do monitor/pipeline
+    - ``info_provider()``   → dict com a identificação da máquina
+    - ``frame_provider()``  → bytes JPEG do quadro atual (None = sem vídeo)
+    """
+    app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
+
+    @app.get("/")
+    def index():
+        return app.send_static_file("index.html")
+
+    @app.get("/api/state")
+    def api_state():
+        return jsonify(state_provider())
+
+    @app.get("/api/metrics")
+    def api_metrics():
+        return jsonify(metrics_provider())
+
+    @app.get("/api/info")
+    def api_info():
+        return jsonify(info_provider() if info_provider else {})
+
+    @app.get("/video_feed")
+    def video_feed():
+        if frame_provider is None:
+            return Response("vídeo indisponível neste modo", status=503,
+                            mimetype="text/plain")
+
+        def generate():
+            while True:
+                jpeg = frame_provider()
+                if jpeg is None:
+                    time.sleep(0.1)
+                    continue
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                       + jpeg + b"\r\n")
+                time.sleep(1 / 30)
+
+        return Response(generate(),
+                        mimetype="multipart/x-mixed-replace; boundary=frame")
+
+    return app

@@ -1,0 +1,97 @@
+"""Bloco 3 — extração de landmarks da mão.
+
+Em produção usa o MediaPipe Hands (ZHANG et al., 2020): 21 pontos de
+referência a partir de uma única câmera RGB. O contrato ``LandmarkExtractor``
+permite substituir o extrator por versões roteirizadas nos testes e no modo
+demonstração, sem alterar os demais estágios.
+"""
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+import numpy as np
+
+NUM_LANDMARKS = 21
+
+
+@dataclass
+class HandDetection:
+    """Resultado da extração: 21 pontos (x, y) normalizados em [0, 1]."""
+
+    landmarks: np.ndarray          # shape (21, 2) ou (21, 3), float32
+    score: float = 1.0
+    handedness: str = "Right"
+
+
+class LandmarkExtractor(ABC):
+    @abstractmethod
+    def extract(self, rgb: np.ndarray) -> "HandDetection | None":
+        """Extrai a mão do quadro RGB; None quando não há mão no quadro."""
+
+    def close(self) -> None:
+        """Libera recursos do modelo (padrão: nada a fazer)."""
+
+
+class MediaPipeExtractor(LandmarkExtractor):
+    """Extrator real usando MediaPipe Hands."""
+
+    def __init__(self, max_hands: int = 1, det_conf: float = 0.6,
+                 track_conf: float = 0.5):
+        try:
+            import mediapipe as mp
+        except ImportError as exc:
+            raise RuntimeError(
+                "mediapipe não está instalado (requer Python 3.9 a 3.12); "
+                "instale-o ou execute em modo --demo."
+            ) from exc
+        self._hands = mp.solutions.hands.Hands(
+            static_image_mode=False,
+            max_num_hands=max_hands,
+            min_detection_confidence=det_conf,
+            min_tracking_confidence=track_conf,
+        )
+
+    def extract(self, rgb):
+        result = self._hands.process(rgb)
+        if not result.multi_hand_landmarks:
+            return None
+        hand = result.multi_hand_landmarks[0]
+        pts = np.array([[p.x, p.y] for p in hand.landmark], dtype=np.float32)
+        score, handedness = 1.0, "Right"
+        if result.multi_handedness:
+            cls = result.multi_handedness[0].classification[0]
+            score, handedness = float(cls.score), cls.label
+        return HandDetection(landmarks=pts, score=score, handedness=handedness)
+
+    def close(self):
+        self._hands.close()
+
+
+class NullExtractor(LandmarkExtractor):
+    """Nunca detecta mão — degradação graciosa sem hardware/modelo."""
+
+    def extract(self, rgb):
+        return None
+
+
+class ScriptedExtractor(LandmarkExtractor):
+    """Reproduz uma sequência pré-definida de detecções (demo e testes).
+
+    A sequência contém um item por quadro: ``HandDetection`` quando há mão,
+    ``None`` quando não há. Com ``loop=True`` a sequência recomeça ao fim.
+    """
+
+    def __init__(self, sequence, loop: bool = False):
+        self._seq = list(sequence)
+        self._loop = loop
+        self._i = 0
+
+    def extract(self, rgb):
+        if self._i >= len(self._seq):
+            if not self._loop or not self._seq:
+                return None
+            self._i = 0
+        detection = self._seq[self._i]
+        self._i += 1
+        return detection

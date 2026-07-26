@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tradutor Embarcado de LIBRAS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Tradutor Embarcado de LIBRAS</h1>
+    <p class="subtitle">PCS3724 — Sistemas Embarcados · processamento local (edge computing)</p>
+  </header>
+
+  <main>
+    <section class="card" id="video-card">
+      <h2>Câmera</h2>
+      <img id="video" src="/video_feed" alt="fluxo da câmera">
+      <div id="video-placeholder" hidden>vídeo indisponível neste modo</div>
+      <div class="row">
+        <span id="hand-badge" class="badge">sem mão</span>
+        <span id="fps" class="badge">0 fps</span>
+      </div>
+    </section>
+
+    <section class="card" id="traducao">
+      <h2>Tradução</h2>
+      <div id="letra">—</div>
+      <div class="conf-bar"><div id="conf-fill"></div></div>
+      <p class="label">palavra em montagem</p>
+      <div id="palavra">…</div>
+      <p class="label">última palavra</p>
+      <div id="ultima">—</div>
+      <p class="label">histórico</p>
+      <ul id="historico"></ul>
+    </section>
+
+    <section class="card" id="dashboard">
+      <h2>Dashboard do processador</h2>
+      <div class="tiles">
+        <div class="tile"><span class="tile-label">CPU</span><span class="tile-value" id="m-cpu">—</span></div>
+        <div class="tile"><span class="tile-label">RAM</span><span class="tile-value" id="m-ram">—</span></div>
+        <div class="tile"><span class="tile-label">Clock</span><span class="tile-value" id="m-clock">—</span></div>
+        <div class="tile"><span class="tile-label">Temperatura</span><span class="tile-value" id="m-temp">—</span></div>
+        <div class="tile"><span class="tile-label">CPI</span><span class="tile-value" id="m-cpi">—</span></div>
+        <div class="tile"><span class="tile-label">IPC</span><span class="tile-value" id="m-ipc">—</span></div>
+      </div>
+      <p class="label">latência por estágio do pipeline (ms)</p>
+      <ul id="latencias"></ul>
+    </section>
+  </main>
+
+  <footer id="machine-info">…</footer>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -83,8 +83,12 @@ sudo apt install python3-opencv espeak-ng   # OpenCV do sistema + TTS leve
 cd projeto
 python3 -m venv --system-site-packages .venv   # reaproveita o cv2 do apt
 source .venv/bin/activate
-pip install numpy flask psutil mediapipe pyttsx3 pytest
+pip install numpy flask psutil "mediapipe>=0.10.9,<1.0" pyttsx3 pytest
 ```
+
+> O teto `<1.0` é obrigatório no Pi: as wheels `aarch64` do MediaPipe 1.x
+> exigem a extensão criptográfica ARMv8 (AES), ausente no Pi 4/5, e o import
+> aborta com `Illegal instruction` (veja Solução de problemas).
 
 Para o CPI/IPC aparecerem no dashboard e no benchmark (opcional):
 
@@ -311,6 +315,7 @@ degrada graciosamente, nunca falha por falta de sensor).
 |---|---|
 | `mediapipe` não instala | Python sem wheel disponível ou SO 32-bit (`armv7l`). Use um Python suportado em SO 64-bit, ou rode `--demo` |
 | `AttributeError: module 'mediapipe' has no attribute 'solutions'` | MediaPipe >= 0.10.31 (API nova) — suportado; rode `python -m libras.get_model` para baixar o modelo |
+| `FATAL ERROR: this binary was compiled with aes enable but this feature is not available on this processor` + `Illegal instruction` | Wheel do `mediapipe` 1.x no Raspberry Pi: ela exige a extensão criptográfica ARMv8 (AES), que o Pi 4/5 não tem (confira com `grep -m1 Features /proc/cpuinfo` — sem `aes`). Instale abaixo do teto: `pip install "mediapipe>=0.10.9,<1.0"`. A linha `matplotlib ... generated new fontManager` que aparece antes é só log de INFO (o mediapipe depende do matplotlib), não a causa |
 | `Modelo do MediaPipe não encontrado` | Rode `python -m libras.get_model` (download único de ~8 MB) |
 | `CameraError: Não foi possível abrir a câmera` | Índice errado (`--camera 1`) ou permissão; em Linux confira `ls /dev/video*` |
 | CPI/IPC "indisponível" | Instale `linux-perf` e libere `sudo sysctl kernel.perf_event_paranoid=0` (Linux). No Windows não há suporte |

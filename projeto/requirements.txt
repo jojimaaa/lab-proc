@@ -11,5 +11,8 @@ psutil>=5.9
 # webcam). Podem falhar em Python > 3.12; veja o README.
 # ---------------------------------------------------------------------------
 opencv-python>=4.8      # captura de vídeo (no Raspberry Pi OS prefira: sudo apt install python3-opencv)
-mediapipe>=0.10.9       # extração de landmarks (requer Python 3.9 a 3.12)
+# Teto <1.0: as wheels aarch64 do mediapipe 1.x são compiladas com a extensão
+# criptográfica ARMv8 (AES) habilitada, que o Raspberry Pi 4/5 não possui — o
+# import aborta com "compiled with aes enable ... Illegal instruction".
+mediapipe>=0.10.9,<1.0  # extração de landmarks (requer Python 3.9 a 3.12)
 pyttsx3>=2.90           # síntese de voz (alternativa leve: sudo apt install espeak-ng)

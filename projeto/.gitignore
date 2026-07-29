@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 .pytest_cache/
 benchmark-*.json
+imagens/                    # dataset público de imagens (re-baixável, ~57 MB)
+data/hand_landmarker.task   # modelo do MediaPipe (python -m libras.get_model)

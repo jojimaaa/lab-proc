@@ -34,25 +34,77 @@ class LandmarkExtractor(ABC):
 
 
 class MediaPipeExtractor(LandmarkExtractor):
-    """Extrator real usando MediaPipe Hands."""
+    """Extrator real usando MediaPipe Hands.
+
+    Suporta as duas gerações da API do MediaPipe:
+
+    - **legada** (``mediapipe`` <= 0.10.30): ``mp.solutions.hands``;
+    - **Tasks** (``mediapipe`` >= 0.10.31, que removeu ``mp.solutions``):
+      ``HandLandmarker``, que exige o arquivo de modelo
+      ``data/hand_landmarker.task`` — baixe uma única vez com
+      ``python -m libras.get_model``.
+
+    ``static=True`` otimiza para imagens avulsas (importação de dataset);
+    ``static=False`` (padrão) usa rastreamento entre quadros de vídeo.
+    """
 
     def __init__(self, max_hands: int = 1, det_conf: float = 0.6,
-                 track_conf: float = 0.5):
+                 track_conf: float = 0.5, static: bool = False,
+                 model_path=None):
         try:
             import mediapipe as mp
         except ImportError as exc:
             raise RuntimeError(
-                "mediapipe não está instalado (requer Python 3.9 a 3.12); "
-                "instale-o ou execute em modo --demo."
+                "mediapipe não está instalado; instale-o ou execute em "
+                "modo --demo."
             ) from exc
-        self._hands = mp.solutions.hands.Hands(
-            static_image_mode=False,
-            max_num_hands=max_hands,
-            min_detection_confidence=det_conf,
+        self._mp = mp
+        self._static = static
+        if hasattr(mp, "solutions"):
+            self._api = "solutions"
+            self._hands = mp.solutions.hands.Hands(
+                static_image_mode=static,
+                max_num_hands=max_hands,
+                min_detection_confidence=det_conf,
+                min_tracking_confidence=track_conf,
+            )
+        else:
+            self._api = "tasks"
+            self._init_tasks_api(mp, max_hands, det_conf, track_conf,
+                                 model_path)
+
+    def _init_tasks_api(self, mp, max_hands, det_conf, track_conf,
+                        model_path):
+        from pathlib import Path
+
+        from mediapipe.tasks.python import vision
+
+        from .config import MODEL_PATH
+
+        model = Path(model_path) if model_path else MODEL_PATH
+        if not model.exists():
+            raise RuntimeError(
+                f"Modelo do MediaPipe não encontrado em {model}.\n"
+                "Baixe-o uma única vez com:  python -m libras.get_model")
+        mode = (vision.RunningMode.IMAGE if self._static
+                else vision.RunningMode.VIDEO)
+        options = vision.HandLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=str(model)),
+            running_mode=mode,
+            num_hands=max_hands,
+            min_hand_detection_confidence=det_conf,
             min_tracking_confidence=track_conf,
         )
+        self._landmarker = vision.HandLandmarker.create_from_options(options)
+        self._timestamp_ms = 0
 
+    # ------------------------------------------------------------- extração
     def extract(self, rgb):
+        if self._api == "solutions":
+            return self._extract_solutions(rgb)
+        return self._extract_tasks(rgb)
+
+    def _extract_solutions(self, rgb):
         result = self._hands.process(rgb)
         if not result.multi_hand_landmarks:
             return None
@@ -64,8 +116,33 @@ class MediaPipeExtractor(LandmarkExtractor):
             score, handedness = float(cls.score), cls.label
         return HandDetection(landmarks=pts, score=score, handedness=handedness)
 
+    def _extract_tasks(self, rgb):
+        mp = self._mp
+        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        if self._static:
+            result = self._landmarker.detect(image)
+        else:
+            # O modo VIDEO exige timestamps estritamente crescentes.
+            self._timestamp_ms += 33
+            result = self._landmarker.detect_for_video(image,
+                                                       self._timestamp_ms)
+        hands = getattr(result, "hand_landmarks", None)
+        if not hands:
+            return None
+        pts = np.array([[p.x, p.y] for p in hands[0]], dtype=np.float32)
+        score, handedness = 1.0, "Right"
+        categories = getattr(result, "handedness", None)
+        if categories and categories[0]:
+            category = categories[0][0]
+            score = float(getattr(category, "score", 1.0))
+            handedness = getattr(category, "category_name", "Right") or "Right"
+        return HandDetection(landmarks=pts, score=score, handedness=handedness)
+
     def close(self):
-        self._hands.close()
+        if self._api == "solutions":
+            self._hands.close()
+        else:
+            self._landmarker.close()
 
 
 class NullExtractor(LandmarkExtractor):

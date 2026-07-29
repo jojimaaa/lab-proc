@@ -34,6 +34,62 @@ def test_invariancia_a_posicao_e_distancia_da_camera(trained_classifier,
     assert prediction.label == "A"
 
 
+def test_invariancia_a_inclinacao_da_mao(trained_classifier,
+                                         synthetic_dataset):
+    """O mesmo gesto com a mão inclinada (rotação no plano) é a mesma letra."""
+    _, _, prototypes = synthetic_dataset
+    proto = prototypes["B"]
+    theta = np.deg2rad(35.0)
+    c, s = np.cos(theta), np.sin(theta)
+    rotation = np.array([[c, -s], [s, c]], dtype=np.float32)
+    rotated = (proto - proto[0]) @ rotation.T + proto[0]
+    prediction = trained_classifier.predict(normalize_landmarks(rotated))
+    assert prediction.label == "B"
+
+
+def test_invariancia_a_mao_espelhada(trained_classifier, synthetic_dataset):
+    """Mão esquerda (ou câmera espelhada) produz a mesma letra."""
+    _, _, prototypes = synthetic_dataset
+    mirrored = prototypes["C"].copy()
+    mirrored[:, 0] = 1.0 - mirrored[:, 0]
+    prediction = trained_classifier.predict(normalize_landmarks(mirrored))
+    assert prediction.label == "C"
+
+
+def test_gesto_desconhecido_recebe_confianca_reduzida(trained_classifier):
+    """Gesto longe de tudo que foi treinado não pode ter confiança alta
+    (rejeição open-set), mesmo que os vizinhos concordem entre si."""
+    rng = np.random.default_rng(99)
+    unknown = rng.uniform(-3.0, 3.0, size=42).astype(np.float32)
+    prediction = trained_classifier.predict(unknown)
+    assert prediction.confidence < 0.65  # abaixo do limiar de confirmação
+
+
+def test_gesto_com_ruido_de_webcam_ainda_confirma(trained_classifier,
+                                                  synthetic_dataset):
+    """A rejeição open-set não pode silenciar gestos legítimos com o jitter
+    típico dos landmarks ao vivo (regressão: sistema mudo)."""
+    _, _, prototypes = synthetic_dataset
+    rng = np.random.default_rng(7)
+    confirmable = 0
+    for letter, proto in prototypes.items():
+        noisy = proto + rng.normal(0, 0.015, proto.shape).astype(np.float32)
+        prediction = trained_classifier.predict(normalize_landmarks(noisy))
+        if prediction.label == letter and prediction.confidence >= 0.65:
+            confirmable += 1
+    assert confirmable >= 24, f"só {confirmable}/26 letras confirmáveis"
+
+
+def test_dataset_de_classe_unica_nao_quebra():
+    """Coleta iniciada com uma única letra ainda funciona (sem margem entre
+    classes para medir, a rejeição é ignorada)."""
+    rng = np.random.default_rng(1)
+    X = rng.normal(0, 0.1, (10, 42)).astype(np.float32)
+    clf = KnnClassifier(k=3).fit(X, ["A"] * 10)
+    prediction = clf.predict(X[0])
+    assert prediction.label == "A"
+
+
 def test_confianca_alta_para_amostra_limpa(trained_classifier,
                                            synthetic_dataset):
     _, _, prototypes = synthetic_dataset

@@ -38,7 +38,7 @@ def parse_args(argv=None):
     parser.add_argument("--host", default=None,
                         help="endereço de escuta do servidor (padrão 0.0.0.0)")
     parser.add_argument("--port", type=int, default=None,
-                        help="porta do servidor (padrão 8000)")
+                        help=f"porta do servidor (padrão {Config.port})")
     parser.add_argument("--no-tts", action="store_true",
                         help="desliga a síntese de voz")
     parser.add_argument("--tts-engine", choices=["pyttsx3", "espeak", "null"],

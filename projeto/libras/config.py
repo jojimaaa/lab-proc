@@ -12,6 +12,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATASET = PROJECT_ROOT / "data" / "dataset.csv"
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
+# Modelo da API Tasks do MediaPipe (baixado por: python -m libras.get_model)
+MODEL_PATH = PROJECT_ROOT / "data" / "hand_landmarker.task"
 
 
 @dataclass
@@ -29,7 +31,7 @@ class Config:
     knn_k: int = 5
 
     # Bloco 5 — lógica temporal (votação em janela e montagem de palavras)
-    min_confidence: float = 0.70   # limiar de confiança da predição
+    min_confidence: float = 0.65   # limiar de confiança da predição
     window_size: int = 12          # tamanho da janela deslizante de votação
     min_votes: int = 8             # votos mínimos para confirmar uma letra
     release_frames: int = 6        # quadros sem mão p/ liberar letra repetida
@@ -37,7 +39,7 @@ class Config:
 
     # Bloco 6 — servidor de aplicação
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8001
 
     # Módulo transversal — monitoramento de desempenho
     monitor_interval: float = 1.0  # s entre amostras de CPU/RAM/temp

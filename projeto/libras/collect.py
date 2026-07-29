@@ -18,7 +18,7 @@ from collections import Counter
 from pathlib import Path
 
 from .capture import CameraSource
-from .classifier import append_samples, load_dataset
+from .classifier import KnnClassifier, append_samples, load_dataset
 from .config import DEFAULT_DATASET, Config
 from .features import normalize_landmarks
 from .landmarks import MediaPipeExtractor
@@ -50,11 +50,15 @@ def main(argv=None) -> int:
     config = Config(camera_index=args.camera)
     dataset_path = Path(args.dataset)
     counts: "Counter[str]" = Counter()
+    classifier: "KnnClassifier | None" = None
     if dataset_path.exists():
         _, labels = load_dataset(dataset_path)
         counts.update(labels)
         print(f"Dataset existente: {sum(counts.values())} amostras, "
               f"{len(counts)} letras.")
+        # Predição ao vivo na janela: mostra o que o modelo atual acha do
+        # gesto ANTES de gravar — evidencia quais letras precisam de reforço.
+        classifier = KnnClassifier.load(dataset_path, k=config.knn_k)
 
     source = CameraSource(config.camera_index, config.frame_width,
                           config.frame_height)
@@ -79,11 +83,25 @@ def main(argv=None) -> int:
                     cv2.line(frame, pts[a], pts[b], (0, 200, 255), 1)
                 for p in pts:
                     cv2.circle(frame, p, 3, (0, 255, 0), -1)
+                if classifier is not None:
+                    prediction = classifier.predict_landmarks(
+                        detection.landmarks)
+                    cv2.putText(frame,
+                                f"modelo: {prediction.label} "
+                                f"({prediction.confidence:.2f})",
+                                (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                                (0, 255, 255), 2)
                 if burst_left > 0 and burst_label:
                     append_samples(dataset_path, burst_label,
                                    [normalize_landmarks(detection.landmarks)])
                     counts[burst_label] += 1
                     burst_left -= 1
+                    if burst_left == 0:
+                        # rajada terminou: retreina com as amostras novas
+                        classifier = KnnClassifier.load(dataset_path,
+                                                        k=config.knn_k)
+                        print(f"Rajada de {burst_label} concluída; "
+                              "modelo recarregado.")
 
             status = (f"gravando '{burst_label}': faltam {burst_left}"
                       if burst_left else "aguardando tecla A-Z")

@@ -27,12 +27,30 @@ class Prediction:
 
 
 class KnnClassifier:
-    """k-NN com votação ponderada pelo inverso da distância."""
+    """k-NN com votação ponderada pelo inverso da distância.
+
+    A confiança combina duas evidências: a concordância dos k vizinhos e a
+    **margem entre classes** — a razão d2/(d1+d2), onde d1 é a distância à
+    amostra mais próxima da classe vencedora e d2 à mais próxima de qualquer
+    outra classe. Um gesto-lixo fica equidistante de tudo (razão ≈ 0,5,
+    confiança zerada); um gesto legítimo, mesmo deslocado da distribuição de
+    treino (webcam ≠ fotos do dataset), continua bem mais perto da classe
+    certa (razão alta). A razão é invariante a deslocamentos uniformes, ao
+    contrário de limiares de distância absoluta.
+    """
+
+    # Rampa da margem → fator de confiança: 0 até MARGIN_LO (lixo fica em
+    # ~0,50), 1 a partir de MARGIN_HI. Calibrada no dataset real com jitter
+    # sintético de webcam (σ=0,03–0,06): lixo aceito 0/100, quadros
+    # legítimos confirmados 72–90%.
+    MARGIN_LO = 0.52
+    MARGIN_HI = 0.62
 
     def __init__(self, k: int = 5):
         self.k = k
         self._X: "np.ndarray | None" = None
         self._y: "list[str]" = []
+        self._labels: "np.ndarray | None" = None
 
     # ------------------------------------------------------------- treino
     def fit(self, X, y) -> "KnnClassifier":
@@ -44,6 +62,7 @@ class KnnClassifier:
             raise ValueError("X e y têm tamanhos diferentes")
         self._X = X
         self._y = [str(label) for label in y]
+        self._labels = np.array(self._y)
         return self
 
     @property
@@ -76,6 +95,15 @@ class KnnClassifier:
             votes[label] = votes.get(label, 0.0) + float(weight)
         best = max(votes, key=votes.get)
         confidence = min(1.0, max(0.0, votes[best] / float(weights.sum())))
+        # Rejeição open-set por margem entre classes (ver docstring da
+        # classe). Com uma única classe no dataset não há margem a medir.
+        winner_mask = self._labels == best
+        if not winner_mask.all():
+            d1 = float(distances[winner_mask].min())
+            d2 = float(distances[~winner_mask].min())
+            ratio = d2 / (d1 + d2 + 1e-9)
+            factor = (ratio - self.MARGIN_LO) / (self.MARGIN_HI - self.MARGIN_LO)
+            confidence *= min(1.0, max(0.0, factor))
         return Prediction(label=best, confidence=confidence)
 
     def predict_landmarks(self, landmarks) -> Prediction:

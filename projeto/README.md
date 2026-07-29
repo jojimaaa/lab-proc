@@ -40,6 +40,8 @@ projeto/
 │   ├── demo.py              # modo demonstração (gestos sintéticos, sem hardware)
 │   ├── main.py              # ponto de entrada:  python -m libras.main
 │   ├── collect.py           # coleta de amostras: python -m libras.collect
+│   ├── import_images.py     # dataset a partir de imagens prontas (sem saber LIBRAS)
+│   ├── get_model.py         # baixa o modelo da API nova do MediaPipe
 │   └── benchmark.py         # benchmark:         python -m libras.benchmark
 ├── frontend/                # página servida ao monitor (vídeo, tradução, dashboard)
 ├── tests/                   # testes unitários de requisitos (ver tabela abaixo)
@@ -107,7 +109,7 @@ real (classificação, votação temporal, palavras, dashboard, TTS):
 python -m libras.main --demo
 ```
 
-Abra **http://localhost:8000/** no navegador: o painel de tradução mostra as
+Abra **http://localhost:8001/** no navegador: o painel de tradução mostra as
 letras sendo confirmadas e as palavras "LIBRAS" e "USP" se formando; o
 dashboard mostra as métricas do processador ao vivo.
 
@@ -118,7 +120,52 @@ python -m libras.main --demo --demo-text "OLA MUNDO"   # outro texto
 python -m libras.main --demo --no-tts --port 8080      # sem voz, outra porta
 ```
 
-### 2. Coletar amostras de gestos (dispositivo com webcam + MediaPipe)
+> **MediaPipe 0.10.31 ou mais novo?** Essas versões removeram a API legada
+> (`mp.solutions`) — o erro típico é
+> `AttributeError: module 'mediapipe' has no attribute 'solutions'`.
+> O projeto suporta as duas APIs automaticamente; para a nova, baixe o
+> modelo uma única vez (~8 MB, depois tudo segue offline):
+>
+> ```bash
+> python -m libras.get_model
+> ```
+
+### 2a. Não sabe LIBRAS? Use um dataset pronto de imagens
+
+Não é preciso saber os gestos para treinar o classificador: dá para usar um
+banco público de **imagens do alfabeto em LIBRAS** e convertê-lo em amostras
+de landmarks com o importador do projeto:
+
+1. Baixe um dataset (opções conhecidas):
+   - [Brazilian Sign Language Alphabet Dataset](https://github.com/biankatpas/Brazilian-Sign-Language-Alphabet-Dataset)
+     — 4.411 imagens, 15 letras estáticas (A, B, C, D, E, I, L, M, N, O, R,
+     S, U, V, W), 200×200 px com fundo homogêneo;
+   - [Alfabeto em LIBRAS (Roboflow)](https://universe.roboflow.com/elainesilva/alfabeto-em-libras-qrvnw)
+     — 1.735 imagens anotadas;
+   - [LIBRAS (Kaggle)](https://www.kaggle.com/datasets/williansoliveira/libras)
+     — imagens do alfabeto.
+2. Organize (se já não estiver assim) uma subpasta por letra:
+   `imagens/A/*.jpg`, `imagens/B/*.jpg`…
+3. Importe — o MediaPipe extrai os landmarks de cada imagem e alimenta o
+   mesmo `data/dataset.csv` da coleta por webcam:
+
+```bash
+python -m libras.import_images caminho/para/imagens --limite 200
+```
+
+Observações: exige OpenCV + MediaPipe instalados (como a coleta); imagens em
+que nenhuma mão é detectada são ignoradas e contabilizadas no resumo; os
+datasets públicos cobrem só as letras **estáticas** do alfabeto (as letras
+com movimento, como H, J, K, X, Y e Z, ficam fora do reconhecimento estático
+de qualquer forma).
+
+Por padrão cada imagem gera 3 variações extras com jitter nos landmarks
+(`--augment 3`), simulando o ruído de detecção da webcam ao vivo — isso
+melhora bastante a taxa de confirmação. Se o estágio de classificação ficar
+lento demais na Raspberry Pi (veja a latência no dashboard), reduza o
+dataset com `--augment 2` ou `--limite 100`.
+
+### 2b. Coletar amostras de gestos (dispositivo com webcam + MediaPipe)
 
 O classificador aprende com **suas** amostras. Na janela de vídeo, faça o
 gesto da letra e pressione a tecla correspondente (A–Z) para gravar uma
@@ -138,7 +185,7 @@ python -m libras.main                # webcam 0, dataset padrão
 python -m libras.main --camera 1    # outra webcam
 ```
 
-Conecte o monitor via HDMI e abra http://localhost:8000/ (ou acesse de
+Conecte o monitor via HDMI e abra http://localhost:8001/ (ou acesse de
 outra máquina da rede pelo IP da placa). O fluxo da câmera aparece no
 painel esquerdo (MJPEG), com a letra reconhecida sobreposta.
 
@@ -262,12 +309,15 @@ degrada graciosamente, nunca falha por falta de sensor).
 
 | Sintoma | Causa provável / solução |
 |---|---|
-| `mediapipe` não instala | Python > 3.12 ou SO 32-bit (`armv7l`). Use um Python 3.11/3.12 em SO 64-bit, ou rode `--demo` |
+| `mediapipe` não instala | Python sem wheel disponível ou SO 32-bit (`armv7l`). Use um Python suportado em SO 64-bit, ou rode `--demo` |
+| `AttributeError: module 'mediapipe' has no attribute 'solutions'` | MediaPipe >= 0.10.31 (API nova) — suportado; rode `python -m libras.get_model` para baixar o modelo |
+| `Modelo do MediaPipe não encontrado` | Rode `python -m libras.get_model` (download único de ~8 MB) |
 | `CameraError: Não foi possível abrir a câmera` | Índice errado (`--camera 1`) ou permissão; em Linux confira `ls /dev/video*` |
 | CPI/IPC "indisponível" | Instale `linux-perf` e libere `sudo sysctl kernel.perf_event_paranoid=0` (Linux). No Windows não há suporte |
 | Sem áudio | Instale `espeak-ng` (`sudo apt install espeak-ng`) ou `pyttsx3`; o texto continua funcionando |
 | Vídeo "indisponível neste modo" | Sem OpenCV instalado (ex.: modo demo no Windows) — tradução e dashboard seguem funcionando |
 | Letras repetidas não entram | Comportamento esperado: tire a mão do quadro por um instante entre letras iguais |
+| Reconhecimento fraco ao vivo | 1) grave amostras **suas** por cima do dataset importado (`python -m libras.collect` — maior ganho, pois casa a distribuição com a sua câmera/mão; a janela mostra a predição ao vivo, então dá para ver exatamente quais letras confundem e reforçá-las); 2) melhore a iluminação e aproxime a mão até preencher boa parte do quadro; 3) ajuste `min_confidence` em `libras/config.py` (0.55 confirma mais fácil, 0.80 erra menos) |
 
 ---
 

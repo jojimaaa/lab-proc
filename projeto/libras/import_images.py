@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 from .classifier import append_samples
-from .config import DEFAULT_DATASET
+from .config import DEFAULT_DATASET, Config
 from .features import normalize_landmarks
 from .landmarks import MediaPipeExtractor
 
@@ -70,7 +70,10 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 2
 
-    extractor = MediaPipeExtractor(static=True)
+    # Mesmo model_complexity da execução (ver Config): o dataset precisa ser
+    # gerado com o modelo que vai consultá-lo.
+    extractor = MediaPipeExtractor(
+        static=True, model_complexity=Config.model_complexity)
     totals: "dict[str, int]" = {}
     skipped = 0
     try:

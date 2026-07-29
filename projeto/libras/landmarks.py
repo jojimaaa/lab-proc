@@ -46,11 +46,16 @@ class MediaPipeExtractor(LandmarkExtractor):
 
     ``static=True`` otimiza para imagens avulsas (importação de dataset);
     ``static=False`` (padrão) usa rastreamento entre quadros de vídeo.
+
+    ``model_complexity`` (só na API legada) escolhe entre o modelo lite (0,
+    padrão — cerca de metade do tempo de inferência, o que decide o FPS na
+    Raspberry Pi) e o completo (1). A API Tasks não tem esse parâmetro: quem
+    define a complexidade é o arquivo ``.task`` carregado.
     """
 
     def __init__(self, max_hands: int = 1, det_conf: float = 0.6,
                  track_conf: float = 0.5, static: bool = False,
-                 model_path=None):
+                 model_path=None, model_complexity: int = 0):
         try:
             import mediapipe as mp
         except ImportError as exc:
@@ -65,6 +70,7 @@ class MediaPipeExtractor(LandmarkExtractor):
             self._hands = mp.solutions.hands.Hands(
                 static_image_mode=static,
                 max_num_hands=max_hands,
+                model_complexity=model_complexity,
                 min_detection_confidence=det_conf,
                 min_tracking_confidence=track_conf,
             )

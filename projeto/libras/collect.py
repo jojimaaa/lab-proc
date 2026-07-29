@@ -62,7 +62,9 @@ def main(argv=None) -> int:
 
     source = CameraSource(config.camera_index, config.frame_width,
                           config.frame_height)
-    extractor = MediaPipeExtractor()
+    # Mesmo model_complexity da execução: coletar com um modelo e inferir com
+    # o outro desloca a distribuição dos landmarks e piora o k-NN.
+    extractor = MediaPipeExtractor(model_complexity=config.model_complexity)
     burst_left = 0
     burst_label: "str | None" = None
 

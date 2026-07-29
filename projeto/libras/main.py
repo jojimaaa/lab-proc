@@ -71,7 +71,8 @@ def main(argv=None) -> int:
         classifier = KnnClassifier.load(dataset, k=config.knn_k)
         source = CameraSource(config.camera_index, config.frame_width,
                               config.frame_height)
-        extractor = MediaPipeExtractor()
+        extractor = MediaPipeExtractor(
+            model_complexity=config.model_complexity)
         mode = (f"real (câmera {config.camera_index}, "
                 f"{classifier.n_samples} amostras, "
                 f"{len(classifier.classes)} letras)")
@@ -100,7 +101,8 @@ def main(argv=None) -> int:
         data["pipeline"] = pipeline.stats()
         return data
 
-    app = create_app(state.to_dict, metrics, machine_info, frame_provider)
+    app = create_app(state.to_dict, metrics, machine_info, frame_provider,
+                     stream_fps=config.video_stream_fps)
 
     tts_name = speaker.engine.name if speaker else "desligado"
     print("=" * 62)

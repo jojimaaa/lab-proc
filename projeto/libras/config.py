@@ -27,6 +27,14 @@ class Config:
     # Bloco 2 — pré-processamento
     process_width: int = 320
 
+    # Bloco 3 — extração de landmarks
+    # model_complexity do MediaPipe Hands: 0 = modelo "lite", 1 = completo.
+    # O lite custa cerca de metade do tempo de inferência e é o padrão porque
+    # o alvo é a Raspberry Pi (RNF-02). Em máquina de mesa, 1 dá landmarks um
+    # pouco mais precisos — mas mude nos DOIS lados (coleta e execução), senão
+    # o dataset é gerado com uma distribuição e consultado com outra.
+    model_complexity: int = 0
+
     # Bloco 4 — classificador
     knn_k: int = 5
 
@@ -40,6 +48,13 @@ class Config:
     # Bloco 6 — servidor de aplicação
     host: str = "0.0.0.0"
     port: int = 8001
+    # O fluxo MJPEG é puro custo extra: cada quadro enviado é um
+    # cv2.imencode na thread do servidor, disputando CPU com o pipeline.
+    # Transmitir em 10 fps, 320 px e qualidade 60 mantém o vídeo legível
+    # gastando uma fração do que 30 fps em 640 px custava.
+    video_stream_fps: float = 10.0
+    video_stream_width: int = 320
+    video_jpeg_quality: int = 60
 
     # Módulo transversal — monitoramento de desempenho
     monitor_interval: float = 1.0  # s entre amostras de CPU/RAM/temp

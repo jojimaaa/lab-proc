@@ -17,13 +17,16 @@ from .config import FRONTEND_DIR
 
 
 def create_app(state_provider, metrics_provider, info_provider=None,
-               frame_provider=None) -> Flask:
+               frame_provider=None, stream_fps: float = 10.0) -> Flask:
     """Cria a aplicação Flask.
 
     - ``state_provider()``  → dict com o estado da tradução (letra, palavra…)
     - ``metrics_provider()``→ dict com as métricas do monitor/pipeline
     - ``info_provider()``   → dict com a identificação da máquina
     - ``frame_provider()``  → bytes JPEG do quadro atual (None = sem vídeo)
+    - ``stream_fps``        → taxa do fluxo MJPEG; cada quadro enviado custa
+      um ``cv2.imencode`` nesta thread, disputando CPU com o pipeline, então
+      no dispositivo embarcado ela fica bem abaixo da taxa de captura
     """
     app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
 
@@ -49,6 +52,8 @@ def create_app(state_provider, metrics_provider, info_provider=None,
             return Response("vídeo indisponível neste modo", status=503,
                             mimetype="text/plain")
 
+        period = 1 / stream_fps if stream_fps > 0 else 0.0
+
         def generate():
             while True:
                 jpeg = frame_provider()
@@ -57,7 +62,8 @@ def create_app(state_provider, metrics_provider, info_provider=None,
                     continue
                 yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
                        + jpeg + b"\r\n")
-                time.sleep(1 / 30)
+                if period:
+                    time.sleep(period)
 
         return Response(generate(),
                         mimetype="multipart/x-mixed-replace; boundary=frame")

@@ -72,10 +72,18 @@ pip install -r requirements-dev.txt
 
 ### No dispositivo alvo (Raspberry Pi com webcam)
 
-O MediaPipe exige **Python 3.9 a 3.12** e **Raspberry Pi OS 64-bit**
-(arquitetura `aarch64` — confira com `uname -m`; para 32-bit/`armv7l` não há
-wheel no PyPI). No Raspberry Pi OS Bookworm 64-bit o Python padrão é 3.11,
-compatível:
+No Pi a versão do Python **importa**, e o intervalo é estreito. Requisitos:
+
+- **Raspberry Pi OS 64-bit** (`uname -m` = `aarch64`; para 32-bit/`armv7l` não
+  há wheel no PyPI);
+- **Python 3.9 a 3.12** — a última versão do MediaPipe com wheel `aarch64` é a
+  **0.10.18**, e ela só publica tags `cp39`–`cp312`;
+- **MediaPipe < 1.0** — as wheels `aarch64` da 1.x são compiladas com a
+  extensão criptográfica ARMv8 (AES), ausente no Pi 4/5, e o import aborta com
+  `Illegal instruction` (veja Solução de problemas). A 1.0.0 é `py3-none`, ou
+  seja, instala em qualquer Python 3 — inclusive onde vai quebrar.
+
+No Raspberry Pi OS **Bookworm** o Python padrão é 3.11 e serve direto:
 
 ```bash
 sudo apt update
@@ -86,9 +94,23 @@ source .venv/bin/activate
 pip install numpy flask psutil "mediapipe>=0.10.9,<1.0" pyttsx3 pytest
 ```
 
-> O teto `<1.0` é obrigatório no Pi: as wheels `aarch64` do MediaPipe 1.x
-> exigem a extensão criptográfica ARMv8 (AES), ausente no Pi 4/5, e o import
-> aborta com `Illegal instruction` (veja Solução de problemas).
+No **Trixie** (ou qualquer imagem com Python 3.13+) o comando acima falha com
+`No matching distribution found for mediapipe`: não existe wheel `aarch64` de
+0.10.x para `cp313`. Traga um Python 3.12 próprio — o `uv` baixa um build
+pronto, sem compilar:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+sudo apt install espeak-ng
+cd projeto
+uv venv -p 3.12 .venv
+source .venv/bin/activate
+uv pip install numpy flask psutil "mediapipe==0.10.18" opencv-python pyttsx3 pytest
+```
+
+> Com um Python próprio o truque do `--system-site-packages` não vale: o `cv2`
+> do apt pertence ao Python do sistema. Por isso a linha acima instala
+> `opencv-python` (há wheel `aarch64`) em vez de reaproveitar o do apt.
 
 Para o CPI/IPC aparecerem no dashboard e no benchmark (opcional):
 
@@ -314,6 +336,7 @@ degrada graciosamente, nunca falha por falta de sensor).
 | Sintoma | Causa provável / solução |
 |---|---|
 | `mediapipe` não instala | Python sem wheel disponível ou SO 32-bit (`armv7l`). Use um Python suportado em SO 64-bit, ou rode `--demo` |
+| `No matching distribution found for mediapipe` no Raspberry Pi | Python 3.13+: a última wheel `aarch64` de 0.10.x é a 0.10.18 e vai só até `cp312`. Confira com `python3 -V` e `pip index versions mediapipe` (se listar apenas `1.0.0`, é este caso). Solução: Python 3.12 via `uv venv -p 3.12` (veja Instalação) |
 | `AttributeError: module 'mediapipe' has no attribute 'solutions'` | MediaPipe >= 0.10.31 (API nova) — suportado; rode `python -m libras.get_model` para baixar o modelo |
 | `FATAL ERROR: this binary was compiled with aes enable but this feature is not available on this processor` + `Illegal instruction` | Wheel do `mediapipe` 1.x no Raspberry Pi: ela exige a extensão criptográfica ARMv8 (AES), que o Pi 4/5 não tem (confira com `grep -m1 Features /proc/cpuinfo` — sem `aes`). Instale abaixo do teto: `pip install "mediapipe>=0.10.9,<1.0"`. A linha `matplotlib ... generated new fontManager` que aparece antes é só log de INFO (o mediapipe depende do matplotlib), não a causa |
 | `Modelo do MediaPipe não encontrado` | Rode `python -m libras.get_model` (download único de ~8 MB) |

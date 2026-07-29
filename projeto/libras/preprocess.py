@@ -29,10 +29,19 @@ def resize_width(frame: np.ndarray, target_width: int) -> np.ndarray:
 
 
 def bgr_to_rgb(frame: np.ndarray) -> np.ndarray:
-    return frame[..., ::-1]
+    """Converte BGR→RGB devolvendo um array contíguo.
+
+    Com OpenCV usa ``cvtColor`` (vetorizado em SIMD); sem ele, a inversão de
+    canais por fatia produz um array de passo negativo, que precisa de uma
+    cópia explícita — bem mais caro, mas só ocorre no modo demo/testes.
+    """
+    try:
+        import cv2
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    except ImportError:
+        return np.ascontiguousarray(frame[..., ::-1])
 
 
 def preprocess(frame: np.ndarray, target_width: int) -> np.ndarray:
     """Estágio completo: redimensiona e converte BGR→RGB (array contíguo)."""
-    small = resize_width(frame, target_width)
-    return np.ascontiguousarray(bgr_to_rgb(small))
+    return bgr_to_rgb(resize_width(frame, target_width))

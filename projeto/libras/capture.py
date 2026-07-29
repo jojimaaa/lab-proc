@@ -6,10 +6,13 @@ uma fonte sintética (``SyntheticSource``), que dispensa câmera e OpenCV.
 """
 from __future__ import annotations
 
+import logging
 import time
 from abc import ABC, abstractmethod
 
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 
 class CameraError(RuntimeError):
@@ -48,8 +51,24 @@ class CameraSource(FrameSource):
         if not self._cap.isOpened():
             self._cap.release()
             raise CameraError(f"Não foi possível abrir a câmera de índice {index}.")
+        # MJPG antes da resolução: em webcam USB o formato bruto (YUYV) satura
+        # o barramento e o driver responde baixando a taxa de quadros. Quando a
+        # câmera não suporta MJPG o set falha silenciosamente e segue em YUYV.
+        self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        # Fila de 1 quadro: sem isso o driver acumula quadros e read() devolve
+        # imagem velha, somando latência ao pipeline sob CPU saturada.
+        self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        actual = (int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                  int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        self.resolution = actual
+        if actual != (width, height):
+            # Nem todo driver aceita a resolução pedida. Avisar importa: uma
+            # câmera presa em 1920x1080 encarece captura e redimensionamento
+            # sem que nada no dashboard denuncie a causa.
+            log.warning("câmera abriu em %dx%d (pedido: %dx%d)",
+                        actual[0], actual[1], width, height)
 
     def read(self):
         failures = 0
